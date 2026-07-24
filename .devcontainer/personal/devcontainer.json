@@ -1,0 +1,26 @@
+// Personal variant: same framework-tooling image as the default config
+// (Neovim, vusted, luacheck, stylua, lemmy-help, just — see ../Dockerfile),
+// then Homebrew via the same devcontainer Feature used in
+// GooseRooster/dotfiles' devcontainer-templates/standalone, then the rest of
+// the environment -- including the real Neovim config -- comes from
+// chezmoi + bootstrap-cli.sh --devcontainer, exactly like that template.
+//
+// `brew install chezmoi` runs before `chezmoi init` because the Homebrew
+// feature only installs Homebrew itself, not any formulae -- chezmoi has to
+// come from somewhere before it can clone the dotfiles that contain
+// bootstrap-cli.sh. bootstrap-cli.sh's own base.Brewfile also lists chezmoi;
+// that's a harmless no-op re-run once it's already installed.
+{
+  "name": "osc-colors.nvim (personal)",
+  "build": {
+    "dockerfile": "../Dockerfile"
+  },
+  "features": {
+    "ghcr.io/meaningful-ooo/devcontainer-features/homebrew:2": {}
+  },
+  "containerEnv": {
+    "DEVCONTAINER": "true"
+  },
+  "remoteUser": "vscode",
+  "postCreateCommand": "brew install chezmoi && chezmoi init https://github.com/GooseRooster/dotfiles.git && cd $(chezmoi source-path) && ./bootstrap-cli.sh --devcontainer"
+}

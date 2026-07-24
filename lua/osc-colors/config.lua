@@ -43,7 +43,7 @@ local M = {}
 ---@field types osc-colors.Config.StyleAttrs
 
 ---@class osc-colors.Config.Highlights
----@field integrations table<string, boolean> Enable/disable plugin integrations (telescope, notify, cmp, blink, dapui, lualine, snacks)
+---@field integrations table<string, boolean> Enable/disable plugin integrations (see README for the list)
 ---@field use_lazy_specs boolean Merge highlights from lazy.nvim plugin specs. Default: true
 ---@field overrides fun(palette: osc-colors.Palette): table Function returning highlight overrides
 
@@ -57,6 +57,31 @@ local M = {}
 ---  - Transform tables: `{ darken = <color>, amount = <number> }`
 ---    or `{ lighten = <color>, amount = <number> }`
 ---
+---Complete color alias list:
+---
+---  - `background`
+---  - `darkest_gray`
+---  - `dark_gray`
+---  - `gray`
+---  - `bright_gray`
+---  - `foreground`
+---  - `bright_white`
+---  - `brightest_white`
+---  - `red`
+---  - `bright_red`
+---  - `orange`
+---  - `yellow`
+---  - `bright_yellow`
+---  - `green`
+---  - `bright_green`
+---  - `cyan`
+---  - `bright_cyan`
+---  - `blue`
+---  - `bright_blue`
+---  - `purple`
+---  - `bright_purple`
+---  - `dark_red`
+---
 ---Example override:
 --->lua
 ---highlights = {
@@ -64,10 +89,14 @@ local M = {}
 ---    return {
 ---      Normal = { bg = "#ff0000" },
 ---      FloatBorder = { fg = palette.base03 },
+---      CursorLine = { bg = "darkest_gray", fg = "foreground" },
 ---    }
 ---  end,
 ---}
 ---<
+---
+---If `highlights.use_lazy_specs` is true, tables named `highlights` inside
+---lazy.nvim plugin specs are merged into the final highlight table.
 ---@brief ]]
 
 ---@type osc-colors.Config

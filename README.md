@@ -217,13 +217,13 @@ doesn't look truecolor-capable).
 
 ## Contributing
 
-This project uses [Nix] flakes for reproducible development environments and
-[just] as a command runner (same tooling as upstream tinted-nvim).
+This project uses a [dev container] for a reproducible environment (Neovim,
+vusted, luacheck, stylua, lemmy-help) and [just] as a command runner. No local
+Lua/Rust toolchain needed — open the repo in VS Code and choose "Dev
+Containers: Reopen in Container" (or use the `devcontainer` CLI / GitHub
+Codespaces).
 
 ```sh
-# Enter the development shell (provides luajit, vusted, luacheck, stylua, lemmy-help)
-nix develop
-
 # List all justfile commands
 just list
 
@@ -271,7 +271,7 @@ kept.
 
 See [LICENSE].
 
-[Nix]: https://nixos.org/
+[dev container]: https://containers.dev/
 [just]: https://github.com/casey/just
 [tinty]: https://github.com/tinted-theming/tinty
 [tinted-shell]: https://github.com/tinted-theming/tinted-shell

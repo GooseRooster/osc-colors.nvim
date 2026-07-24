@@ -1,31 +1,31 @@
 ==============================================================================
-Introduction                                                       *osc-colors*
+Introduction                                                        *osc-colors*
 
 ==============================================================================
-Table of Contents                                         *osc-colors.contents*
+Table of Contents                                          *osc-colors.contents*
 
-Introduction ····················································· |osc-colors|
-Installation ············································· |osc-colors.install|
-Usage ······················································ |osc-colors.usage|
-API ·························································· |osc-colors.api|
-Configuration ············································· |osc-colors.config|
-Highlights ············································ |osc-colors.highlights|
-Commands ················································ |osc-colors.commands|
+Introduction ······················································ |osc-colors|
+Installation ·············································· |osc-colors.install|
+Usage ······················································· |osc-colors.usage|
+Commands ················································· |osc-colors.commands|
+API ··························································· |osc-colors.api|
+Configuration ·············································· |osc-colors.config|
+Highlights ············································· |osc-colors.highlights|
 
 osc-colors is a Neovim colorscheme plugin that paints Neovim with whatever
-16-color palette the host terminal is currently rendering with, queried live
-via OSC 4/10/11 escape sequences. There is no scheme registry, no selector,
-and no dependency on tinty/base16-shell/tinted-theming being installed
-anywhere -- if your terminal answers OSC queries (directly, or tunneled back
-through a devcontainer/SSH session's PTY), osc-colors follows it, including
-across `tinty apply` switches without restarting Neovim.
+16-color palette the host terminal is currently rendering with, queried
+live via OSC 4/10/11 escape sequences. There is no scheme registry, no
+selector, and no dependency on tinty/base16-shell/tinted-theming being
+installed anywhere -- if your terminal answers OSC queries (directly, or
+tunneled back through a devcontainer/SSH session's PTY), osc-colors follows
+it, including across `tinty apply` switches without restarting Neovim.
 
 Its highlight-group mapping and plugin integrations (treesitter, LSP,
 telescope, cmp, blink, dapui, lualine, notify, snacks) are a fork of
 tinted-nvim's engine -- only the palette *source* changed.
 
 ==============================================================================
-Installation                                               *osc-colors.install*
+Installation                                                *osc-colors.install*
 
 Using lazy.nvim:
 >lua
@@ -40,17 +40,25 @@ Using lazy.nvim:
 <
 
 ==============================================================================
-Usage                                                        *osc-colors.usage*
+Usage                                                         *osc-colors.usage*
 
-osc-colors queries the terminal and paints automatically -- there is nothing
-to load by name. To force a fresh query (e.g. right after running `tinty
-apply` in another window):
+osc-colors queries the terminal and paints automatically -- there is
+nothing to load by name. To force a fresh query (e.g. right after running
+`tinty apply` in another window):
 >
   :OscColorsRefresh
 <
 
 ==============================================================================
-API                                                            *osc-colors.api*
+Commands                                                   *osc-colors.commands*
+
+>
+:OscColorsRefresh
+<
+  Re-query the terminal and repaint if the palette changed.
+
+==============================================================================
+API                                                             *osc-colors.api*
 
 The main API functions for osc-colors.
 
@@ -119,7 +127,7 @@ M.get_palette_aliases()                                  *M.get_palette_aliases*
 
 
 ==============================================================================
-Configuration                                               *osc-colors.config*
+Configuration                                                *osc-colors.config*
 
 All configuration is done through `setup()`. Defaults are shown below.
 
@@ -130,17 +138,17 @@ Example:
   })
 <
 
-osc-colors.Config                                          *osc-colors.Config*
+osc-colors.Config                                            *osc-colors.Config*
 
     Fields: ~
         {capabilities}  (osc-colors.Config.Capabilities)  Terminal capability options
         {ui}            (osc-colors.Config.Ui)            UI appearance options
         {styles}        (osc-colors.Config.Styles)        Text style overrides for syntax groups
-        {highlights}    (osc-colors.Config.Highlights)     Highlight configuration
+        {highlights}    (osc-colors.Config.Highlights)    Highlight configuration
         {refresh_on}    (string[])                        Autocmd events that trigger a fresh OSC query. Default: {"UIEnter", "FocusGained"}
 
 
-osc-colors.Config.Capabilities                *osc-colors.Config.Capabilities*
+osc-colors.Config.Capabilities                  *osc-colors.Config.Capabilities*
 
     Fields: ~
         {truecolor}        (boolean)  Enable truecolor support (sets 'termguicolors'). Default: true
@@ -148,14 +156,14 @@ osc-colors.Config.Capabilities                *osc-colors.Config.Capabilities*
         {terminal_colors}  (boolean)  Set terminal colors (g:terminal_color_0..17). Default: true
 
 
-osc-colors.Config.Ui                                    *osc-colors.Config.Ui*
+osc-colors.Config.Ui                                      *osc-colors.Config.Ui*
 
     Fields: ~
         {transparent}   (boolean)  Leave Normal background unset. Default: false
         {dim_inactive}  (boolean)  Dim inactive windows. Default: false
 
 
-osc-colors.Config.StyleAttrs                    *osc-colors.Config.StyleAttrs*
+osc-colors.Config.StyleAttrs                      *osc-colors.Config.StyleAttrs*
 
     Fields: ~
         {italic?}         (boolean)
@@ -165,7 +173,7 @@ osc-colors.Config.StyleAttrs                    *osc-colors.Config.StyleAttrs*
         {strikethrough?}  (boolean)
 
 
-osc-colors.Config.Styles                            *osc-colors.Config.Styles*
+osc-colors.Config.Styles                              *osc-colors.Config.Styles*
 
     Fields: ~
         {comments}   (osc-colors.Config.StyleAttrs)
@@ -175,16 +183,16 @@ osc-colors.Config.Styles                            *osc-colors.Config.Styles*
         {types}      (osc-colors.Config.StyleAttrs)
 
 
-osc-colors.Config.Highlights                    *osc-colors.Config.Highlights*
+osc-colors.Config.Highlights                      *osc-colors.Config.Highlights*
 
     Fields: ~
-        {integrations}    (table<string,boolean>)                 Enable/disable plugin integrations (telescope, notify, cmp, blink, dapui, lualine, snacks)
+        {integrations}    (table<string,boolean>)                  Enable/disable plugin integrations (see README for the list)
         {use_lazy_specs}  (boolean)                                Merge highlights from lazy.nvim plugin specs. Default: true
         {overrides}       (fun(palette:osc-colors.Palette):table)  Function returning highlight overrides
 
 
 ==============================================================================
-Highlights                                              *osc-colors.highlights*
+Highlights                                               *osc-colors.highlights*
 
 Overrides are returned as a table of highlight specs. Color values can be:
 
@@ -234,12 +242,6 @@ highlights = {
 
 If `highlights.use_lazy_specs` is true, tables named `highlights` inside
 lazy.nvim plugin specs are merged into the final highlight table.
-
-==============================================================================
-Commands                                                  *osc-colors.commands*
-
-`:OscColorsRefresh`
-  Re-query the terminal and repaint if the palette changed.
 
 M.defaults                                                          *M.defaults*
 

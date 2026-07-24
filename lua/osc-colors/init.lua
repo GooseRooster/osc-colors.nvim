@@ -36,6 +36,13 @@
 ---  :OscColorsRefresh
 ---<
 ---@brief ]]
+---@mod osc-colors.commands Commands
+---@brief [[
+--->
+---:OscColorsRefresh
+---<
+---  Re-query the terminal and repaint if the palette changed.
+---@brief ]]
 
 local M = {}
 

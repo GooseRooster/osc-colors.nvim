@@ -1,0 +1,13 @@
+{
+  "name": "osc-colors.nvim",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "postCreateCommand": "just list",
+  "customizations": {
+    "vscode": {
+      "extensions": ["sumneko.lua", "JohnnyMorganz.stylua"]
+    }
+  }
+}
