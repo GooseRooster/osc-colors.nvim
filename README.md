@@ -20,6 +20,9 @@ straight to the same highlight-building engine.
 If you don't use a terminal-driven workflow like this, you probably want
 [tinted-nvim] itself, not this fork.
 
+<img width="1162" height="1435" alt="image" src="https://github.com/user-attachments/assets/1df12b6f-af1e-4440-bc02-e252652ad697" />
+
+
 ## How it works
 
 On `UIEnter` (and again on `FocusGained`, so switching your terminal's theme
