@@ -1,0 +1,250 @@
+==============================================================================
+Introduction                                                       *osc-colors*
+
+==============================================================================
+Table of Contents                                         *osc-colors.contents*
+
+Introduction ····················································· |osc-colors|
+Installation ············································· |osc-colors.install|
+Usage ······················································ |osc-colors.usage|
+API ·························································· |osc-colors.api|
+Configuration ············································· |osc-colors.config|
+Highlights ············································ |osc-colors.highlights|
+Commands ················································ |osc-colors.commands|
+
+osc-colors is a Neovim colorscheme plugin that paints Neovim with whatever
+16-color palette the host terminal is currently rendering with, queried live
+via OSC 4/10/11 escape sequences. There is no scheme registry, no selector,
+and no dependency on tinty/base16-shell/tinted-theming being installed
+anywhere -- if your terminal answers OSC queries (directly, or tunneled back
+through a devcontainer/SSH session's PTY), osc-colors follows it, including
+across `tinty apply` switches without restarting Neovim.
+
+Its highlight-group mapping and plugin integrations (treesitter, LSP,
+telescope, cmp, blink, dapui, lualine, notify, snacks) are a fork of
+tinted-nvim's engine -- only the palette *source* changed.
+
+==============================================================================
+Installation                                               *osc-colors.install*
+
+Using lazy.nvim:
+>lua
+  {
+    "GooseRooster/osc-colors.nvim",
+    lazy = false,
+    priority = 1000,
+    opts = {
+      -- your config overrides
+    }
+  }
+<
+
+==============================================================================
+Usage                                                        *osc-colors.usage*
+
+osc-colors queries the terminal and paints automatically -- there is nothing
+to load by name. To force a fresh query (e.g. right after running `tinty
+apply` in another window):
+>
+  :OscColorsRefresh
+<
+
+==============================================================================
+API                                                            *osc-colors.api*
+
+The main API functions for osc-colors.
+
+M.apply({palette})                                                     *M.apply*
+    Apply a flat base16-shaped palette (`variant` + `base00`-`base0F`) to
+    Neovim: builds and sets all highlight groups and terminal colors. No-ops if
+    `palette` is nil (e.g. the terminal never answered the OSC query and there
+    is no cached palette from a previous run).
+
+    Parameters: ~
+        {palette}  (table|nil)  A flat palette table, e.g. from `require("osc-colors.osc").load_cached()`
+
+    Usage: ~
+>lua
+        require("osc-colors").apply(require("osc-colors.osc").load_cached())
+<
+
+
+M.refresh()                                                          *M.refresh*
+    Re-query the terminal for its live palette and apply it if it changed.
+    Safe to call repeatedly; no-ops while a query is already in flight.
+
+    Usage: ~
+>lua
+        require("osc-colors").refresh()
+<
+
+
+M.setup({opts?})                                                       *M.setup*
+    Configure and start the plugin. Paints instantly from the last cached
+    palette (if any), then queries the terminal live on the events listed in
+    `cfg.refresh_on` (default: `UIEnter`, `FocusGained`).
+
+    Parameters: ~
+        {opts?}  (osc-colors.Config)  Configuration options (see |osc-colors.config|)
+
+    Usage: ~
+>lua
+        require("osc-colors").setup({})
+<
+
+
+M.get_palette()                                                  *M.get_palette*
+    Get the current Base16 palette.
+
+    Returns: ~
+        (osc-colors.Palette|nil)  The current palette table (base00-base0F plus the derived tree), or nil.
+
+    Usage: ~
+>lua
+        local palette = require("osc-colors").get_palette()
+<
+
+
+M.get_palette_aliases()                                  *M.get_palette_aliases*
+    Get the current palette with color aliases resolved.
+    Aliases include names like "background", "foreground", "red", "green", etc.
+
+    Returns: ~
+        (table<string,string>|nil)  A table mapping alias names to hex colors, or nil.
+
+    Usage: ~
+>lua
+        local aliases = require("osc-colors").get_palette_aliases()
+<
+
+
+==============================================================================
+Configuration                                               *osc-colors.config*
+
+All configuration is done through `setup()`. Defaults are shown below.
+
+Example:
+>lua
+  require("osc-colors").setup({
+    ui = { transparent = true },
+  })
+<
+
+osc-colors.Config                                          *osc-colors.Config*
+
+    Fields: ~
+        {capabilities}  (osc-colors.Config.Capabilities)  Terminal capability options
+        {ui}            (osc-colors.Config.Ui)            UI appearance options
+        {styles}        (osc-colors.Config.Styles)        Text style overrides for syntax groups
+        {highlights}    (osc-colors.Config.Highlights)     Highlight configuration
+        {refresh_on}    (string[])                        Autocmd events that trigger a fresh OSC query. Default: {"UIEnter", "FocusGained"}
+
+
+osc-colors.Config.Capabilities                *osc-colors.Config.Capabilities*
+
+    Fields: ~
+        {truecolor}        (boolean)  Enable truecolor support (sets 'termguicolors'). Default: true
+        {undercurl}        (boolean)  Use undercurl (falls back to underline if false). Default: false
+        {terminal_colors}  (boolean)  Set terminal colors (g:terminal_color_0..17). Default: true
+
+
+osc-colors.Config.Ui                                    *osc-colors.Config.Ui*
+
+    Fields: ~
+        {transparent}   (boolean)  Leave Normal background unset. Default: false
+        {dim_inactive}  (boolean)  Dim inactive windows. Default: false
+
+
+osc-colors.Config.StyleAttrs                    *osc-colors.Config.StyleAttrs*
+
+    Fields: ~
+        {italic?}         (boolean)
+        {bold?}           (boolean)
+        {underline?}      (boolean)
+        {undercurl?}      (boolean)
+        {strikethrough?}  (boolean)
+
+
+osc-colors.Config.Styles                            *osc-colors.Config.Styles*
+
+    Fields: ~
+        {comments}   (osc-colors.Config.StyleAttrs)
+        {keywords}   (osc-colors.Config.StyleAttrs)
+        {functions}  (osc-colors.Config.StyleAttrs)
+        {variables}  (osc-colors.Config.StyleAttrs)
+        {types}      (osc-colors.Config.StyleAttrs)
+
+
+osc-colors.Config.Highlights                    *osc-colors.Config.Highlights*
+
+    Fields: ~
+        {integrations}    (table<string,boolean>)                 Enable/disable plugin integrations (telescope, notify, cmp, blink, dapui, lualine, snacks)
+        {use_lazy_specs}  (boolean)                                Merge highlights from lazy.nvim plugin specs. Default: true
+        {overrides}       (fun(palette:osc-colors.Palette):table)  Function returning highlight overrides
+
+
+==============================================================================
+Highlights                                              *osc-colors.highlights*
+
+Overrides are returned as a table of highlight specs. Color values can be:
+
+  - Hex colors (`"#rrggbb"`)
+  - `"NONE"`
+  - Color aliases (e.g., `"red"`, `"background"`, `"foreground"`)
+  - Transform tables: `{ darken = <color>, amount = <number> }`
+    or `{ lighten = <color>, amount = <number> }`
+
+Complete color alias list:
+
+  - `background`
+  - `darkest_gray`
+  - `dark_gray`
+  - `gray`
+  - `bright_gray`
+  - `foreground`
+  - `bright_white`
+  - `brightest_white`
+  - `red`
+  - `bright_red`
+  - `orange`
+  - `yellow`
+  - `bright_yellow`
+  - `green`
+  - `bright_green`
+  - `cyan`
+  - `bright_cyan`
+  - `blue`
+  - `bright_blue`
+  - `purple`
+  - `bright_purple`
+  - `dark_red`
+
+Example override:
+>lua
+highlights = {
+  overrides = function(palette)
+    return {
+      Normal = { bg = "#ff0000" },
+      FloatBorder = { fg = palette.base03 },
+      CursorLine = { bg = "darkest_gray", fg = "foreground" },
+    }
+  end,
+}
+<
+
+If `highlights.use_lazy_specs` is true, tables named `highlights` inside
+lazy.nvim plugin specs are merged into the final highlight table.
+
+==============================================================================
+Commands                                                  *osc-colors.commands*
+
+`:OscColorsRefresh`
+  Re-query the terminal and repaint if the palette changed.
+
+M.defaults                                                          *M.defaults*
+
+    Type: ~
+        (osc-colors.Config)
+
+
+vim:tw=78:ts=8:noet:ft=help:norl:
