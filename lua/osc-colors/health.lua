@@ -49,6 +49,15 @@ function M.check()
         )
     end
 
+    if vim.fn.has("nvim-0.11") ~= 1 then
+        vim.health.info(
+            "Neovim <0.11 has a known TermResponse/TermRequest re-entrancy edge case "
+                .. "(neovim/neovim#32706) that can silently drop rapid terminal replies -- "
+                .. "if a live refresh works once at startup but silently stops repainting on later "
+                .. "manual refreshes, upgrading Neovim is worth trying"
+        )
+    end
+
     vim.health.info(string.format("cache file: %s", vim.fn.stdpath("cache") .. "/osc-colors-palette.lua"))
 end
 

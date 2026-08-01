@@ -214,6 +214,14 @@ doesn't look truecolor-capable).
   showing something wrong; there's no bundled fallback palette by design.
 - Plugin highlights not taking effect? Ensure the integration is enabled in
   `highlights.integrations` or defined in your `overrides`.
+- **A live refresh (`:OscColorsRefresh`) worked once but has gone silent**:
+  set `OSC_COLORS_DEBUG=1` (before starting Neovim) and watch `:messages`
+  after triggering a refresh — every OSC reply received, and whether the
+  round completed, gets logged. Zero replies logged means the terminal (or
+  something in the PTY chain) isn't answering the live query at all; some but
+  not all eight, or replies with no completion log line, points at something
+  swallowing them partway through. Neovim `<0.11` is a common cause of the
+  latter (see `:checkhealth osc-colors`).
 
 ## Contributing
 
@@ -239,6 +247,10 @@ just docs
 # Format files with stylua
 just fmt
 ```
+
+Want your own dotfiles/editor config inside the container too? See
+[`.devcontainer/local.example`](.devcontainer/local.example) — opt-in, gitignored,
+never affects other contributors or CI.
 
 ### Project structure
 

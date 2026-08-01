@@ -116,6 +116,22 @@ describe("osc", function()
             assert.equal("#1a1a1a", cached.base00)
         end)
 
+        it("succeeds on a second, independent round after the first fully completes", function()
+            -- Regression test for a bug where a live refresh worked once
+            -- per process but silently no-op'd on every later manual
+            -- refresh: exercises `refresh_async` twice sequentially on the
+            -- *same* module instance (no reload in between), the exact
+            -- "second real-world refresh in one session" scenario.
+            local first = refresh_and_wait({ bg = "1a1a/1a1a/1a1a" })
+            assert.is_table(first)
+            assert.equal("#1a1a1a", first.base00)
+
+            local second = refresh_and_wait({ bg = "2b2b/2b2b/2b2b" })
+            assert.is_table(second)
+            assert.equal("#2b2b2b", second.base00)
+            assert.are_not.same(first.base00, second.base00)
+        end)
+
         it("calls back with nil when nothing changed since the cache", function()
             refresh_and_wait()
 

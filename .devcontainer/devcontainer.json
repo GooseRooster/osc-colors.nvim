@@ -1,10 +1,54 @@
+// Dev container for osc-colors.nvim: Neovim + the Lua test/lint/format/doc
+// tooling the justfile expects, baked into Dockerfile. Bakes in the container
+// plumbing learned the hard way: rootless-podman keep-id, the /tmp fix,
+// Homebrew-on-PATH, SSH agent forwarding, and the gitignored local/
+// personalization hook. See README.md.
 {
   "name": "osc-colors.nvim",
   "build": {
     "dockerfile": "Dockerfile"
   },
+  "features": {
+    // Non-root user + passwordless sudo. The rust base image already ships a
+    // uid-1000 'vscode' user; this just configures sudo/certs consistently.
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "username": "vscode",
+      "installZsh": false
+    }
+  },
   "remoteUser": "vscode",
-  "postCreateCommand": "just list",
+  // Rootless podman:
+  //  --userns=keep-id : map host uid 1000 -> the container's uid-1000 user, so the
+  //                     bind-mounted workspace is writable (else host maps to root).
+  //  --name           : stable container name instead of the CLI's vsc-<hash>.
+  "runArgs": [
+    "--userns=keep-id",
+    "--name",
+    "osc-colors-nvim"
+  ],
+  // keep-id already aligns UIDs; skip the CLI's UID-sync layer.
+  "updateRemoteUserUID": false,
+  "remoteEnv": {
+    // Homebrew bin on PATH so brew-installed tools (nushell, ...) resolve in every
+    // `devcontainer exec`/terminal. Brew is installed by the personal hook (not a
+    // Feature), so nothing else adds it; inert if the personal setup isn't used.
+    "PATH": "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${containerEnv:PATH}"
+  },
+  "containerEnv": {
+    // Point ssh at the forwarded host agent socket (mounted below).
+    "SSH_AUTH_SOCK": "/ssh-agent",
+    // Inert unless someone runs the personal nvim config (profile.lua reads these).
+    // stylua/lemmy-help/just are cargo-installed Rust binaries -- see Dockerfile.
+    "DEVCONTAINER": "true",
+    "NVIM_LANGS": "rust"
+  },
+  // SSH agent forwarding: signing stays in the host agent; PRIVATE KEYS NEVER ENTER
+  // THE CONTAINER. Requires SSH_AUTH_SOCK set in the shell running the up command.
+  // (GitHub's host key is pre-seeded in the image -- see Dockerfile.)
+  "mounts": [
+    "source=${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind"
+  ],
+  "postCreateCommand": "bash .devcontainer/scripts/setup-repo.sh && bash .devcontainer/scripts/setup-local.sh",
   "customizations": {
     "vscode": {
       "extensions": ["sumneko.lua", "JohnnyMorganz.stylua"]

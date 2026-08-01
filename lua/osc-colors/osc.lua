@@ -17,6 +17,18 @@ local ESC, ST = "\027", "\027\\"
 local ANSI_HUE_INDEX = { 1, 2, 3, 4, 5, 6 } -- red, green, yellow, blue, magenta, cyan
 
 local in_flight = false
+local round_seq = 0
+
+-- Opt-in diagnostic logging for live-refresh issues (e.g. a terminal that
+-- answers the OSC queries once at startup but goes silent on later manual
+-- refreshes). Off by default and zero-cost when unset; set
+-- OSC_COLORS_DEBUG=1 and check :messages to see exactly which replies (if
+-- any) arrive for a given refresh round, and whether `finish()` completes.
+local function dbg(fmt, ...)
+    if vim.env.OSC_COLORS_DEBUG then
+        vim.notify(string.format("[osc-colors] " .. fmt, ...), vim.log.levels.DEBUG)
+    end
+end
 
 -- : Color math [[[
 
@@ -198,9 +210,14 @@ end
 ---@param on_result fun(palette: table|nil)
 function M.refresh_async(on_result)
     if in_flight then
+        dbg("refresh_async called while already in flight -- ignoring")
         return
     end
     in_flight = true
+    round_seq = round_seq + 1
+    local my_round = round_seq
+    local t0 = vim.uv.hrtime()
+    dbg("round %d: refresh_async start", my_round)
 
     local results = { osc10 = nil, osc11 = nil, osc4 = {} }
     local augroup = vim.api.nvim_create_augroup("osc_colors_query", { clear = true })
@@ -225,13 +242,19 @@ function M.refresh_async(on_result)
         end
         finished = true
         in_flight = false
+        dbg("round %d: finish(success=%s) at %dms", my_round, tostring(success), (vim.uv.hrtime() - t0) / 1e6)
         pcall(vim.api.nvim_del_augroup_by_id, augroup)
-        if timer and not timer:is_closing() then
-            timer:stop()
-            timer:close()
-        end
+        -- pcall'd so a throw here (e.g. an already-closing timer handle)
+        -- can never abandon the on_result(...) calls below.
+        pcall(function()
+            if timer and not timer:is_closing() then
+                timer:stop()
+                timer:close()
+            end
+        end)
 
         if not success then
+            dbg("round %d: on_result(nil) [timeout]", my_round)
             on_result(nil)
             return
         end
@@ -239,11 +262,13 @@ function M.refresh_async(on_result)
         local palette = synthesize(results.osc10, results.osc11, results.osc4)
         local cached = M.load_cached()
         if palettes_equal(palette, cached) then
+            dbg("round %d: on_result(nil) [unchanged]", my_round)
             on_result(nil)
             return
         end
 
         write_cache(palette)
+        dbg("round %d: on_result(palette)", my_round)
         on_result(palette)
     end
 
@@ -255,6 +280,15 @@ function M.refresh_async(on_result)
                 return
             end
             local kind, idx, hex = classify_and_parse(sequence)
+            dbg(
+                "round %d: TermResponse raw=%q kind=%s idx=%s hex=%s at %dms",
+                my_round,
+                sequence,
+                tostring(kind),
+                tostring(idx),
+                tostring(hex),
+                (vim.uv.hrtime() - t0) / 1e6
+            )
             if not kind or not hex then
                 return
             end
@@ -281,6 +315,7 @@ function M.refresh_async(on_result)
         end)
     )
 
+    dbg("round %d: sending 8 OSC queries", my_round)
     vim.api.nvim_ui_send(query_osc10())
     vim.api.nvim_ui_send(query_osc11())
     for _, idx in ipairs(ANSI_HUE_INDEX) do

@@ -12,12 +12,20 @@ ARG NVIM_VERSION=stable
 
 USER root
 
+# openssh-client: ssh + ssh-keyscan for agent-forwarded git (see devcontainer.json's
+# SSH_AUTH_SOCK mount/containerEnv).
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        openssh-client \
         lua5.1 \
         liblua5.1-0-dev \
         luarocks \
         unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Baseline SSH host key so agent-forwarded git verifies github.com with no
+# per-developer known_hosts file. '|| true' so a transient network failure
+# doesn't fail the build.
+RUN ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> /etc/ssh/ssh_known_hosts 2>/dev/null || true
 
 # Neovim: prebuilt release tarball, no build deps needed.
 RUN curl -fsSL "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.tar.gz" \
