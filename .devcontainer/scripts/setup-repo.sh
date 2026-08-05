@@ -10,6 +10,15 @@ set -euo pipefail
 # passwordless sudo (common-utils).
 sudo chmod 1777 /tmp
 
+# devcontainers/features/common-utils:2 has a regression where it creates
+# (or recreates) ~/.local and ~/.config as root-owned after install, which
+# breaks anything that subsequently tries to mkdir under them -- notably
+# chezmoi (`chezmoi init` fails with "permission denied" on ~/.local/share/chezmoi),
+# cargo, and any tool that lazy-creates XDG dirs. The fix has to run here in
+# post-create: the Feature runs between the Dockerfile and us, so a Dockerfile
+# chown would just be clobbered. Idempotent; ignores paths that don't exist yet.
+sudo chown -R "$(id -u):$(id -g)" "$HOME/.local" "$HOME/.config" 2>/dev/null || true
+
 # Toolchain (Neovim, vusted, luacheck, stylua, lemmy-help, just) is baked into
 # the Dockerfile -- nothing to restore per-repo. `just list` doubles as a
 # sanity check that everything landed on PATH.
