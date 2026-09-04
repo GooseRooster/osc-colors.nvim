@@ -19,6 +19,34 @@ function M.check()
         vim.health.warn("no palette has been applied yet -- did setup() run, and has a query ever succeeded?")
     end
 
+    local config = require("osc-colors.config")
+    local cfg = config.options or config.defaults
+    local mapping = cfg.mapping or "soul"
+    if mapping == "soul" then
+        vim.health.ok('mapping: soul (role-based colors via OKLCH; set `mapping = "base16"` for classic slot mapping)')
+        if palette then
+            local soul = require("osc-colors.soul").extract(palette)
+            if soul.achromatic then
+                vim.health.info(
+                    "soul: achromatic -- roles degrade to lightness structure with conventional semantic accents"
+                )
+            else
+                vim.health.info(
+                    string.format(
+                        "soul: dominant hue %.0fdeg, concentration %.2f, warm bias %.2f, chroma envelope %.3f-%.3f",
+                        soul.hue_mean,
+                        soul.hue_kappa,
+                        soul.warm_bias,
+                        soul.chroma_median,
+                        soul.chroma_max
+                    )
+                )
+            end
+        end
+    else
+        vim.health.info("mapping: base16 (classic static slot mapping)")
+    end
+
     local cached = osc.load_cached()
     if cached then
         vim.health.ok(
@@ -26,6 +54,29 @@ function M.check()
         )
     else
         vim.health.warn("no disk cache yet -- a terminal that never answers OSC 4/10/11 leaves colors untouched")
+    end
+
+    local capability = require("osc-colors.capability")
+    local cap = (plugin.get_palette() and plugin.get_palette().capability) or (cached and cached.capability) or nil
+    if cap then
+        local tier = cap.tier
+        if tier == "truecolor" then
+            vim.health.ok("terminal capability: " .. capability.describe(cap))
+        elseif tier == "256" then
+            vim.health.warn(
+                "terminal capability: "
+                    .. capability.describe(cap)
+                    .. " -- rendering snaps to the terminal's indexed palette"
+            )
+        else
+            vim.health.info(
+                "terminal capability: "
+                    .. capability.describe(cap)
+                    .. " -- assumed truecolor (no positive probe result)"
+            )
+        end
+    else
+        vim.health.info("terminal capability: not probed yet (no palette applied, no cache)")
     end
 
     if vim.env.TMUX then

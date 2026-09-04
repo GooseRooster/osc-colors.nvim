@@ -13,12 +13,26 @@ Configuration ·································
 Highlights ············································· |osc-colors.highlights|
 
 osc-colors is a Neovim colorscheme plugin that paints Neovim with whatever
-16-color palette the host terminal is currently rendering with, queried
-live via OSC 4/10/11 escape sequences. There is no scheme registry, no
-selector, and no dependency on tinty/base16-shell/tinted-theming being
-installed anywhere -- if your terminal answers OSC queries (directly, or
-tunneled back through a devcontainer/SSH session's PTY), osc-colors follows
+palette the host terminal is currently rendering with, queried live via
+OSC 4/10/11 escape sequences -- including across devcontainers/SSH
+sessions, where the round-trip tunnels back through the PTY. There is no
+scheme registry, no selector, and no dependency on
+tinty/base16-shell/tinted-theming being installed anywhere: if your
+terminal answers queries (directly or through tmux), osc-colors follows
 it, including across `tinty apply` switches without restarting Neovim.
+
+A terminal capability probe (XTGETTCAP + environment, see
+|osc-colors.capability|) decides how colors render: truecolor terminals
+get free RGB; probed 256-only terminals get colors snapped to the
+terminal's *actual* (queried, possibly remapped) 256-color cube.
+
+By default (`mapping = "soul"`), highlight groups are painted by *role*:
+the palette's "soul" (dominant hues, chroma envelope, lightness envelope)
+is extracted and each highlight role's color is resolved through OKLCH
+color math -- a warm theme leans its whole role system warm, a monochrome
+theme gets structured grayscale. Semantic exceptions (errors, warnings,
+diffs) stay anchored to their conventional hue sectors. Set
+`mapping = "base16"` for the classic static base16 slot mapping.
 
 Its highlight-group mapping and plugin integrations (treesitter, LSP,
 telescope, cmp, blink, dapui, lualine, notify, snacks) are a fork of
@@ -142,18 +156,19 @@ osc-colors.Config                                            *osc-colors.Config*
 
     Fields: ~
         {capabilities}  (osc-colors.Config.Capabilities)  Terminal capability options
-        {ui}            (osc-colors.Config.Ui)            UI appearance options
-        {styles}        (osc-colors.Config.Styles)        Text style overrides for syntax groups
-        {highlights}    (osc-colors.Config.Highlights)    Highlight configuration
-        {refresh_on}    (string[])                        Autocmd events that trigger a fresh OSC query. Default: {"UIEnter", "FocusGained"}
+        {mapping}       ()
 
 
 osc-colors.Config.Capabilities                  *osc-colors.Config.Capabilities*
 
     Fields: ~
-        {truecolor}        (boolean)  Enable truecolor support (sets 'termguicolors'). Default: true
-        {undercurl}        (boolean)  Use undercurl (falls back to underline if false). Default: false
-        {terminal_colors}  (boolean)  Set terminal colors (g:terminal_color_0..17). Default: true
+        {truecolor}  (boolean|)
+
+
+osc-colors.Config.Soul                                  *osc-colors.Config.Soul*
+
+    Fields: ~
+        {semantic}  ()
 
 
 osc-colors.Config.Ui                                      *osc-colors.Config.Ui*

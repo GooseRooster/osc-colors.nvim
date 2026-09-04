@@ -10,6 +10,8 @@ function M.build(palette, _aliases, cfg)
     local ui = palette.ui
     local pal = palette.palette
     local hl = {}
+    local sem = palette.semantics
+    local diff = sem.diff
 
     hl.Normal = {
         fg = ui.global.foreground.normal,
@@ -81,9 +83,9 @@ function M.build(palette, _aliases, cfg)
 
     hl.Title = { fg = pal.blue.bright }
 
-    hl.Error = { fg = ui.status.error }
-    hl.ErrorMsg = { fg = ui.status.error }
-    hl.WarningMsg = { fg = ui.status.warning }
+    hl.Error = { fg = sem.error }
+    hl.ErrorMsg = { fg = sem.error }
+    hl.WarningMsg = { fg = sem.warning }
 
     hl.ModeMsg = { fg = pal.green.normal }
     hl.MoreMsg = { fg = pal.green.normal }
@@ -109,36 +111,36 @@ function M.build(palette, _aliases, cfg)
     hl.SpellBad = {
         underline = not cfg.capabilities.undercurl,
         undercurl = cfg.capabilities.undercurl,
-        sp = ui.status.error,
+        sp = sem.error,
     }
     hl.SpellCap = {
         underline = not cfg.capabilities.undercurl,
         undercurl = cfg.capabilities.undercurl,
-        sp = pal.orange.normal,
+        sp = sem.warning,
     }
     hl.SpellLocal = {
         underline = not cfg.capabilities.undercurl,
         undercurl = cfg.capabilities.undercurl,
-        sp = pal.orange.normal,
+        sp = sem.warning,
     }
     hl.SpellRare = {
         underline = not cfg.capabilities.undercurl,
         undercurl = cfg.capabilities.undercurl,
-        sp = pal.orange.normal,
+        sp = sem.warning,
     }
 
     hl.DiffAdd = {
-        bg = { darken = pal.green.normal, amount = 0.75 },
+        bg = { darken = diff.add, amount = 0.75 },
     }
     hl.DiffText = {
-        bg = { darken = pal.blue.normal, amount = 0.75 },
+        bg = { darken = diff.change, amount = 0.75 },
     }
 
     hl.DiffChange = {
         bg = ui.highlight.line.background,
     }
     hl.DiffDelete = {
-        bg = { darken = pal.red.normal, amount = 0.9 },
+        bg = { darken = diff.delete, amount = 0.9 },
         fg = pal.gray.dim,
     }
 

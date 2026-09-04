@@ -59,7 +59,7 @@ function M.build(palette, _aliases, _cfg)
         hl.TSType = { link = "Type" }
         hl.TSTypeBuiltin = { link = "TSType" }
         hl.TSVariable = { fg = sx.variable.default }
-        hl.TSVariableBuiltin = { fg = sx.variable.default, italic = true }
+        hl.TSVariableBuiltin = { fg = sx.variable.builtin, italic = true }
     else
         -- modern Treesitter (@ captures + semantic links)
         hl["@comment"] = { link = "Comment" }
@@ -137,7 +137,7 @@ function M.build(palette, _aliases, _cfg)
         hl["@label"] = { fg = sx.entity.name.label }
 
         hl["@include"] = { fg = sx.keyword.control.import }
-        hl["@exception"] = { fg = pal.red.normal }
+        hl["@exception"] = { fg = palette.semantics.error }
 
         hl["@type"] = { link = "Type" }
         hl["@type.builtin"] = { link = "@type" }
@@ -169,12 +169,12 @@ function M.build(palette, _aliases, _cfg)
         hl["@property"] = { fg = sx.variable.other.property }
 
         hl["@variable"] = { fg = sx.variable.default }
-        hl["@variable.builtin"] = { fg = sx.variable.default, italic = true }
+        hl["@variable.builtin"] = { fg = sx.variable.builtin, italic = true }
         hl["@variable.parameter"] = { link = "@parameter" }
         hl["@variable.member"] = { link = "@field" }
 
         hl["@constant"] = { fg = sx.constant.default }
-        hl["@constant.builtin"] = { link = "@constant" }
+        hl["@constant.builtin"] = { fg = sx.constant.builtin }
         hl["@constant.macro"] = { link = "@constant" }
 
         hl["@namespace"] = { fg = sx.entity.name.namespace }

@@ -14,15 +14,36 @@ local M = {}
 
 ---@class osc-colors.Config
 ---@field capabilities osc-colors.Config.Capabilities Terminal capability options
+---@field mapping "soul"|"base16" Highlight mapping mode. Default: `"soul"`
+-- `"soul"` derives highlight-role colors from the palette's extracted
+-- "soul" (dominant hues, chroma envelope, lightness envelope) via OKLCH
+-- color math, with semantic exceptions (errors/warnings/diffs) kept
+-- anchored to their conventional hue sectors. `"base16"` is the classic
+-- static base16 slot mapping.
+---@field soul osc-colors.Config.Soul Soul-mapping tuning knobs (only used when `mapping = "soul"`)
 ---@field ui osc-colors.Config.Ui UI appearance options
 ---@field styles osc-colors.Config.Styles Text style overrides for syntax groups
 ---@field highlights osc-colors.Config.Highlights Highlight configuration
 ---@field refresh_on string[] Autocmd events that trigger a fresh OSC query. Default: {"UIEnter", "FocusGained"}
 
 ---@class osc-colors.Config.Capabilities
----@field truecolor boolean Enable truecolor support (sets 'termguicolors'). Default: true
+---@field truecolor boolean|"auto" Enable truecolor support (sets 'termguicolors'). Default: `"auto"`
+-- `"auto"` is probe-informed: it only drops to exact 256-color indices when
+-- the XTGETTCAP/env probe says the terminal is not truecolor; an inconclusive
+-- probe behaves like `true` (the status quo). Legacy `true` forces
+-- 'termguicolors' on; legacy `false` leaves it untouched.
+---@field query_timeout_ms number Terminal reply wait per refresh round, in ms. Default: 200
 ---@field undercurl boolean Use undercurl (falls back to underline if false). Default: false
 ---@field terminal_colors boolean Set terminal colors (g:terminal_color_0..17). Default: true
+
+---@class osc-colors.Config.Soul
+---@field semantic "sector"|"derived" Semantic exception policy. Default: `"sector"`
+-- `"sector"` keeps errors/warnings/diffs anchored to their conventional
+-- hue sectors (the soul picks exact hue/chroma/lightness within the
+-- sector); `"derived"` fully soul-derives them (experimental).
+---@field contrast_target number Minimum WCAG contrast for text roles against the background. Default: 4.5
+---@field chroma_ceiling_scale number Scales the soul's chroma envelope ceiling (1.0 = as extracted). Default: 1.0
+---@field roles table<string, table> Per-role descriptor overrides, keyed by role name (see README for the role list)
 
 ---@class osc-colors.Config.Ui
 ---@field transparent boolean Leave Normal background unset. Default: false
@@ -102,9 +123,19 @@ local M = {}
 ---@type osc-colors.Config
 M.defaults = {
     capabilities = {
-        truecolor = true,
+        truecolor = "auto",
+        query_timeout_ms = 200,
         undercurl = false,
         terminal_colors = true,
+    },
+
+    mapping = "soul",
+
+    soul = {
+        semantic = "sector",
+        contrast_target = 4.5,
+        chroma_ceiling_scale = 1.0,
+        roles = {},
     },
 
     ui = {

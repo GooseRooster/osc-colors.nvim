@@ -15,6 +15,7 @@ local lsp = require("osc-colors.highlights.lsp")
 local diagnostics = require("osc-colors.highlights.diagnostics")
 local aliases = require("osc-colors.aliases")
 local utils = require("osc-colors.utils")
+local oklch = require("osc-colors.oklch")
 
 -- Integrations (opt in)
 local integrations = {
@@ -88,7 +89,12 @@ local function resolve_color(value, palette)
 end
 
 -- Resolve aliases in a highlight spec.
-local function resolve_spec(spec, palette, hex_to_cterm)
+-- `nearest` (optional) snaps unresolved hexes to the terminal's *real*
+-- 256-color cube (queried via OSC 4 slots 16-255) by perceptual distance,
+-- back-filling ctermfg/ctermbg even when the hex isn't an exact palette
+-- match -- generic converters match against the nominal xterm cube, which
+-- terminals routinely remap.
+local function resolve_spec(spec, palette, hex_to_cterm, nearest)
     if spec.link then
         return spec
     end
@@ -101,6 +107,9 @@ local function resolve_spec(spec, palette, hex_to_cterm)
             -- Add cterm colors when we can map a resolved hex color to an ANSI slot.
             if utils.is_hex(color) then
                 local cterm = hex_to_cterm[color:lower()]
+                if cterm == nil and nearest then
+                    cterm = nearest(color)
+                end
                 local cterm_key = k == "fg" and "ctermfg" or "ctermbg"
                 if cterm and out[cterm_key] == nil then
                     out[cterm_key] = cterm
@@ -171,9 +180,46 @@ function M.build(palette, cfg)
 
     -- resolve aliases
     local hex_to_cterm = utils.build_hex_to_cterm_map(palette, aliases.cterm)
+
+    -- Real-cube awareness: exact matches against the terminal's actual
+    -- cube slots, then perceptual nearest-match for everything else. On a
+    -- probed 256 tier with no queried cube, the nominal xterm cube is the
+    -- fallback (roles.lua snaps its generated colors to the same
+    -- candidates, so gui and cterm stay consistent).
+    local nearest = nil
+    local tier = palette.capability and palette.capability.tier or "unknown"
+    local cube = palette.cube or (tier == "256" and utils.nominal_cube() or nil)
+    if type(cube) == "table" then
+        local cube_coords = {}
+        for idx, hex in pairs(cube) do
+            if utils.is_hex(hex) then
+                hex_to_cterm[hex:lower()] = hex_to_cterm[hex:lower()] or idx
+                local L, a, b = oklch.hex_to_oklab(hex)
+                table.insert(cube_coords, { idx = idx, L = L, a = a, b = b })
+            end
+        end
+        local memo = {}
+        nearest = function(hex)
+            local key = hex:lower()
+            if memo[key] ~= nil then
+                return memo[key]
+            end
+            local L, a, b = oklch.hex_to_oklab(hex)
+            local best, best_d = nil, math.huge
+            for _, c in ipairs(cube_coords) do
+                local d = (L - c.L) ^ 2 + (a - c.a) ^ 2 + (b - c.b) ^ 2
+                if d < best_d then
+                    best, best_d = c.idx, d
+                end
+            end
+            memo[key] = best
+            return best
+        end
+    end
+
     local resolved = {}
     for group, spec in pairs(result) do
-        resolved[group] = resolve_spec(spec, palette, hex_to_cterm)
+        resolved[group] = resolve_spec(spec, palette, hex_to_cterm, nearest)
     end
 
     return resolved

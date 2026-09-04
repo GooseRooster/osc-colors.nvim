@@ -86,6 +86,20 @@ local function synthesize_tree(palette, system)
         },
     }
 
+    -- Semantic single source of truth (mirrors ui.status for the diagnostic
+    -- roles; the soul pass regenerates these from role math). Static base16
+    -- values are identical to what the builders consumed before this table
+    -- existed, so `mapping = "base16"` output is unchanged.
+    synthesized.semantics = {
+        error = s.base08,
+        warning = s.base09,
+        info = s.base0A,
+        hint = s.base0D,
+        success = is_base24 and s.base14 or s.base0B,
+        deprecated = s.base0F,
+        diff = { add = s.base0B, delete = s.base08, change = s.base0D },
+    }
+
     synthesized.syntax = {
         comment = s.base03,
         string = {
@@ -97,6 +111,7 @@ local function synthesize_tree(palette, system)
             default = s.base09,
             character = { default = s.base08, escape = s.base0C },
             language = s.base09,
+            builtin = s.base09,
             numeric = { default = s.base09, float = s.base09 },
         },
         entity = {
@@ -126,6 +141,7 @@ local function synthesize_tree(palette, system)
         variable = {
             default = s.base05,
             parameter = s.base05,
+            builtin = s.base05,
             other = { property = s.base05 },
         },
         punctuation = { separator = s.base0F, section = s.base0F },

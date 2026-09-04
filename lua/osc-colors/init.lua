@@ -2,12 +2,26 @@
 ---@toc osc-colors.contents
 ---@brief [[
 ---osc-colors is a Neovim colorscheme plugin that paints Neovim with whatever
----16-color palette the host terminal is currently rendering with, queried
----live via OSC 4/10/11 escape sequences. There is no scheme registry, no
----selector, and no dependency on tinty/base16-shell/tinted-theming being
----installed anywhere -- if your terminal answers OSC queries (directly, or
----tunneled back through a devcontainer/SSH session's PTY), osc-colors follows
+---palette the host terminal is currently rendering with, queried live via
+---OSC 4/10/11 escape sequences -- including across devcontainers/SSH
+---sessions, where the round-trip tunnels back through the PTY. There is no
+---scheme registry, no selector, and no dependency on
+---tinty/base16-shell/tinted-theming being installed anywhere: if your
+---terminal answers queries (directly or through tmux), osc-colors follows
 ---it, including across `tinty apply` switches without restarting Neovim.
+---
+---A terminal capability probe (XTGETTCAP + environment, see
+---|osc-colors.capability|) decides how colors render: truecolor terminals
+---get free RGB; probed 256-only terminals get colors snapped to the
+---terminal's *actual* (queried, possibly remapped) 256-color cube.
+---
+---By default (`mapping = "soul"`), highlight groups are painted by *role*:
+---the palette's "soul" (dominant hues, chroma envelope, lightness envelope)
+---is extracted and each highlight role's color is resolved through OKLCH
+---color math. A warm theme leans its whole role system warm, a monochrome
+---theme gets structured grayscale. Semantic exceptions (errors, warnings,
+---diffs) stay anchored to their conventional hue sectors. Set
+---`mapping = "base16"` for the classic static base16 slot mapping.
 ---
 ---Its highlight-group mapping and plugin integrations (treesitter, LSP,
 ---telescope, cmp, blink, dapui, lualine, notify, snacks) are a fork of
@@ -52,6 +66,7 @@ local highlights = require("osc-colors.highlights")
 local terminal = require("osc-colors.terminal")
 local osc = require("osc-colors.osc")
 local aliases = require("osc-colors.aliases")
+local roles = require("osc-colors.roles")
 
 local public_state = {
     palette = nil,
@@ -77,6 +92,15 @@ function M.apply(palette)
     local cfg = config.options or config.defaults
 
     palette = colors.normalize(palette)
+
+    -- Soul mapping: regenerate the palette tree's role colors from the
+    -- extracted "soul" via OKLCH role math (roles.lua), with semantic
+    -- exceptions kept in their conventional hue sectors. `mapping =
+    -- "base16"` skips this entirely -- bit-identical classic behavior.
+    if (cfg.mapping or "soul") == "soul" then
+        roles.apply(palette, cfg)
+    end
+
     local hl_defs = highlights.build(palette, cfg)
     local term = terminal.build(palette, cfg)
 
@@ -84,7 +108,17 @@ function M.apply(palette)
         vim.cmd("highlight clear")
     end
 
-    if cfg.capabilities.truecolor ~= false then
+    -- 'termguicolors' decision. `true`/`false` keep their historical
+    -- meanings (force on / leave untouched). `"auto"` is probe-informed:
+    -- a truecolor or inconclusive probe keeps RGB rendering (the status
+    -- quo -- a 256-only terminal handed SGR 38;2;R;G;B approximates it to
+    -- its cube and degrades gently), while a probed 256-only terminal
+    -- switches to exact cube indices via ctermfg/ctermbg.
+    local truecolor = cfg.capabilities.truecolor
+    if truecolor == "auto" then
+        local tier = palette.capability and palette.capability.tier or "unknown"
+        vim.o.termguicolors = (tier ~= "256")
+    elseif truecolor ~= false then
         vim.o.termguicolors = true
     end
     vim.g.colors_name = "osc-colors"
@@ -103,7 +137,16 @@ end
 ---Safe to call repeatedly; no-ops while a query is already in flight.
 ---@usage `require("osc-colors").refresh()`
 function M.refresh()
-    osc.refresh_async(M.apply)
+    local cfg = config.options or config.defaults
+    osc.refresh_async(M.apply, {
+        timeout_ms = cfg.capabilities.query_timeout_ms,
+        -- Lazy 256-cube query: only soul mapping on a probed 256-only
+        -- terminal needs the terminal's real (possibly remapped) cube for
+        -- snapping. Everything else skips the 240 extra queries.
+        cube = function(tier)
+            return (cfg.mapping or "soul") == "soul" and tier == "256"
+        end,
+    })
 end
 
 ---Configure and start the plugin. Paints instantly from the last cached

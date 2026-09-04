@@ -229,22 +229,63 @@ end
 
 ---Build reverse lookup from hex color to ANSI cterm index.
 ---The cterm_map keys are canonical palette tree paths (e.g. "palette.red.normal").
+---
+---Deterministic: base16 spec-collapses bright variants into normal slots, so
+---one hex can legitimately appear under several tree paths (e.g. red.normal
+---AND red.bright). Resolution prefers `.normal` paths, then alphabetical, so
+---the canonical slot always wins instead of whichever `pairs` happens to
+---visit first.
 ---@param palette osc-colors.Palette
 ---@param cterm_map table<string, integer|nil>
 ---@return table<string, integer>
 function M.build_hex_to_cterm_map(palette, cterm_map)
-    local out = {}
-
+    local entries = {}
     for path, cterm in pairs(cterm_map or {}) do
         if type(cterm) == "number" then
-            local color = M.lookup(palette, path)
-            if M.is_hex(color) and out[color:lower()] == nil then
-                out[color:lower()] = cterm
-            end
+            table.insert(entries, { path = path, cterm = cterm })
+        end
+    end
+    table.sort(entries, function(a, b)
+        local a_normal = a.path:match("%.normal$") ~= nil
+        local b_normal = b.path:match("%.normal$") ~= nil
+        if a_normal ~= b_normal then
+            return a_normal
+        end
+        return a.path < b.path
+    end)
+
+    local out = {}
+    for _, e in ipairs(entries) do
+        local color = M.lookup(palette, e.path)
+        if M.is_hex(color) and out[color:lower()] == nil then
+            out[color:lower()] = e.cterm
         end
     end
 
     return out
+end
+
+---The nominal xterm 256-color cube (slots 16-255), by formula. Only used as
+---a fallback when the terminal's *actual* cube couldn't be queried -- the
+---real cube (terminals and themes routinely remap entries) is always
+---preferred via OSC 4 probing.
+---@return table<integer, string> idx -> #rrggbb
+function M.nominal_cube()
+    local cube = {}
+    local levels = { 0, 95, 135, 175, 215, 255 }
+    for r = 0, 5 do
+        for g = 0, 5 do
+            for b = 0, 5 do
+                local idx = 16 + 36 * r + 6 * g + b
+                cube[idx] = string.format("#%02x%02x%02x", levels[r + 1], levels[g + 1], levels[b + 1])
+            end
+        end
+    end
+    for i = 0, 23 do
+        local v = 8 + 10 * i
+        cube[232 + i] = string.format("#%02x%02x%02x", v, v, v)
+    end
+    return cube
 end
 
 return M

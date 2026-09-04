@@ -76,6 +76,56 @@ describe("highlights", function()
             assert.is_table(result.Function)
         end)
 
+        describe("real-cube cterm backfill", function()
+            it("snaps unmatched hexes to the nearest queried cube slot", function()
+                local palette = vim.deepcopy(test_palette)
+                palette.capability = { tier = "256" }
+                palette.cube = {
+                    [16] = "#ff0000", -- a red the base16 slots don't use
+                    [17] = "#00ff00",
+                    [196] = "#ff5f00",
+                    [244] = "#808080",
+                }
+                local result = highlights.build(palette, default_cfg)
+
+                -- Every fg/bg that resolves to a hex must now carry a cterm
+                -- index even when it isn't an exact palette slot match.
+                local with_cterm, without_cterm = 0, 0
+                for _, spec in pairs(result) do
+                    if type(spec.fg) == "string" and spec.fg:sub(1, 1) == "#" then
+                        if spec.ctermfg then
+                            with_cterm = with_cterm + 1
+                        else
+                            without_cterm = without_cterm + 1
+                        end
+                    end
+                end
+                assert.is_true(with_cterm > 0)
+                assert.equal(0, without_cterm)
+            end)
+
+            it("prefers an exact palette-slot match over a cube snap", function()
+                local palette = vim.deepcopy(test_palette)
+                -- disambiguate from base08 so the cterm map isn't ambiguous
+                palette.base0F = "#884400"
+                palette.capability = { tier = "256" }
+                palette.cube = {
+                    [196] = "#ff5f00", -- near-miss to base08's #880000
+                }
+                local result = highlights.build(palette, default_cfg)
+
+                -- Debug = base08 = #880000 = ANSI red (slot 1) via aliases.cterm
+                assert.equal(1, result.Debug.ctermfg)
+            end)
+
+            it("does no nearest-matching when there is no cube", function()
+                local result = highlights.build(test_palette, default_cfg)
+                -- without a cube, only exact palette-slot matches carry cterm;
+                -- a mid-ramp gray like base03 (#333333) maps to ANSI 8
+                assert.equal(8, result.Comment.ctermfg)
+            end)
+        end)
+
         describe("treesitter capture fallback coverage", function()
             -- Regression coverage for the bug class where a capture name a
             -- modern grammar actually emits (e.g. razor/c_sharp/html/jsx) was

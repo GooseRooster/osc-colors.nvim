@@ -1,5 +1,10 @@
 ---@alias osc-colors.HexColor string
 
+---Probed terminal color capability (see `osc-colors.capability`).
+---@class osc-colors.Capability
+---@field tier "truecolor"|"256"|"unknown"
+---@field evidence? { reason?: string, signals?: table }
+
 ---@class osc-colors.ColorTransform
 ---@field darken? string
 ---@field lighten? string
@@ -77,6 +82,7 @@
 ---@field default osc-colors.HexColor
 ---@field character osc-colors.SyntaxConstantCharacter
 ---@field language osc-colors.HexColor
+---@field builtin osc-colors.HexColor
 ---@field numeric osc-colors.SyntaxConstantNumeric
 
 ---@class osc-colors.SyntaxEntityNameFunction
@@ -109,6 +115,7 @@
 ---@class osc-colors.SyntaxVariable
 ---@field default osc-colors.HexColor
 ---@field parameter osc-colors.HexColor
+---@field builtin osc-colors.HexColor
 ---@field other { property: osc-colors.HexColor }
 
 ---@class osc-colors.SyntaxMarkup
@@ -132,11 +139,40 @@
 ---@field markup osc-colors.SyntaxMarkup
 ---@field meta { preprocessor: osc-colors.HexColor }
 
+---Semantic role colors -- the single source of truth for diagnostics,
+---errors, and diffs. In base16 mode these mirror the static slot
+---assignments; in soul mode they're regenerated from role math with
+---conventional hue-sector anchoring (see `osc-colors.roles`).
+---@class osc-colors.Semantics
+---@field error osc-colors.HexColor
+---@field warning osc-colors.HexColor
+---@field info osc-colors.HexColor
+---@field hint osc-colors.HexColor
+---@field success osc-colors.HexColor
+---@field deprecated osc-colors.HexColor
+---@field diff { add: osc-colors.HexColor, delete: osc-colors.HexColor, change: osc-colors.HexColor }
+
+---Result of roles.generate: resolved role colors, the extracted soul, and
+---the cube-snapper (nil outside the 256 tier).
+---@class osc-colors.RoleGeneration
+---@field roles table<string, string> role name -> hex
+---@field soul table
+---@field snap? fun(hex: string): string
+
 ---@class osc-colors.Palette
 ---@field variant "dark"|"light"
 ---@field palette osc-colors.PaletteNamed
 ---@field ui osc-colors.Ui
 ---@field syntax osc-colors.Syntax
+---@field semantics osc-colors.Semantics
+---@field capability? osc-colors.Capability
+-- The terminal's *actual* 256-color cube (OSC 4 slots 16-255), keyed on the
+-- cterm slot index. Present only when a cube round ran and the terminal
+-- answered; consumers must handle its absence.
+---@field cube? table<integer, osc-colors.HexColor>
+-- Internal: set once roles.apply has rewritten the tree; survives
+-- colors.normalize so a second soul pass never double-applies.
+---@field _soul_applied? boolean
 -- Legacy base slot fields (synthesized for backwards compatibility).
 ---@field base00? osc-colors.HexColor
 ---@field base01? osc-colors.HexColor

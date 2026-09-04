@@ -5,33 +5,32 @@ local M = {}
 ---@param cfg osc-colors.Config
 ---@return osc-colors.Highlights
 function M.build(palette, _aliases, cfg)
-    local ui = palette.ui
-    local pal = palette.palette
+    local sem = palette.semantics
     local hl = {
-        DiagnosticError = { fg = ui.status.error },
-        DiagnosticWarn = { fg = ui.status.warning },
-        DiagnosticInfo = { fg = ui.status.info },
-        DiagnosticHint = { fg = pal.blue.normal },
+        DiagnosticError = { fg = sem.error },
+        DiagnosticWarn = { fg = sem.warning },
+        DiagnosticInfo = { fg = sem.info },
+        DiagnosticHint = { fg = sem.hint },
 
         DiagnosticUnderlineError = {
             underline = not cfg.capabilities.undercurl,
             undercurl = cfg.capabilities.undercurl,
-            sp = ui.status.error,
+            sp = sem.error,
         },
         DiagnosticUnderlineWarn = {
             underline = not cfg.capabilities.undercurl,
             undercurl = cfg.capabilities.undercurl,
-            sp = ui.status.warning,
+            sp = sem.warning,
         },
         DiagnosticUnderlineInfo = {
             underline = not cfg.capabilities.undercurl,
             undercurl = cfg.capabilities.undercurl,
-            sp = ui.status.info,
+            sp = sem.info,
         },
         DiagnosticUnderlineHint = {
             underline = not cfg.capabilities.undercurl,
             undercurl = cfg.capabilities.undercurl,
-            sp = pal.blue.normal,
+            sp = sem.hint,
         },
 
         DiagnosticFloatingError = { link = "DiagnosticError" },
@@ -50,11 +49,11 @@ function M.build(palette, _aliases, cfg)
         DiagnosticVirtualTextHint = { link = "DiagnosticHint" },
     }
     if vim.fn.has("nvim-0.9.0") == 1 then
-        hl.DiagnosticOk = { fg = ui.status.success }
+        hl.DiagnosticOk = { fg = sem.success }
         hl.DiagnosticUnderlineOk = {
             underline = not cfg.capabilities.undercurl,
             undercurl = cfg.capabilities.undercurl,
-            sp = ui.status.success,
+            sp = sem.success,
         }
         hl.DiagnosticFloatingOk = { link = "DiagnosticOk" }
         hl.DiagnosticSignOk = { link = "DiagnosticOk" }
