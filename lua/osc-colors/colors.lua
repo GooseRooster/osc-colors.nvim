@@ -9,6 +9,8 @@
 
 local M = {}
 
+local utils = require("osc-colors.utils")
+
 -- Synthesize the tinted8-shaped tree (palette/ui/syntax) from a base16/24
 -- palette's legacy base00-baseXX slots. Mirrors the per-key fills in
 -- templates/base16.lua.mustache and templates/base24.lua.mustache exactly.
@@ -23,6 +25,19 @@ local function synthesize_tree(palette, system)
     -- Auto-detect base24 by presence of bright slots when no explicit system is given.
     local is_base24 = (system == "base24") or (system == nil and palette.base12 ~= nil)
     local s = palette
+
+    -- Algorithmically derive a new accent tone for markup tag *attributes*
+    -- (e.g. HTML/Razor/JSX `<Tag attr="...">`), which have no dedicated
+    -- base16 slot of their own -- without this, `@tag.attribute` has nothing
+    -- to use but the same color as `@tag` itself (see highlights/treesitter.lua).
+    -- Derived from the widest gap on the hue wheel between the scheme's 6
+    -- real queried hues, so the tone stays "in family" with whatever this
+    -- particular terminal theme's palette actually looks like, rather than
+    -- statically stealing an existing hue that already carries a different
+    -- meaning elsewhere. Falls back to plain foreground for near-monochrome
+    -- schemes where a derived tone can't be reliably distinct.
+    local tag_attribute_accent =
+        utils.derive_accent({ s.base08, s.base0A, s.base0B, s.base0C, s.base0D, s.base0E }, s.base05)
 
     local synthesized = {}
     synthesized.palette = {
@@ -95,6 +110,10 @@ local function synthesize_tree(palette, system)
             },
             other = {
                 ["attribute-name"] = s.base0A,
+                -- Distinct from `entity.other["attribute-name"]` (used for
+                -- `@attribute` -- C#/Rust attributes, Python decorators):
+                -- this is specifically for markup tag attributes/props.
+                ["tag-attribute-name"] = tag_attribute_accent,
             },
         },
         keyword = {

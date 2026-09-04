@@ -123,5 +123,32 @@ describe("colors", function()
             assert.equal(once.base00, twice.base00)
             assert.equal(once.palette.red.normal, twice.palette.red.normal)
         end)
+
+        it("derives a distinct tag-attribute accent tone from the scheme's own hues", function()
+            local palette = colors.normalize(vim.deepcopy(base16_palette))
+
+            local tag = palette.syntax.entity.name.tag
+            local attribute = palette.syntax.entity.other["tag-attribute-name"]
+
+            assert.is_string(attribute)
+            assert.not_equal(tag, attribute)
+        end)
+
+        it("falls back to foreground for the tag-attribute accent on a near-monochrome scheme", function()
+            local monochrome = vim.tbl_extend("force", vim.deepcopy(base16_palette), {
+                base08 = "#888888",
+                base09 = "#898989",
+                base0A = "#8a8a8a",
+                base0B = "#878787",
+                base0C = "#868686",
+                base0D = "#858585",
+                base0E = "#848484",
+                base0F = "#838383",
+            })
+
+            local palette = colors.normalize(monochrome)
+
+            assert.equal(palette.base05, palette.syntax.entity.other["tag-attribute-name"])
+        end)
     end)
 end)

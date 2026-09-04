@@ -1,5 +1,0 @@
-# Nested gitignore -- scoped to .devcontainer/, so the container config stays
-# self-contained.
-
-# Per-developer personalization -- never shared.
-/local/

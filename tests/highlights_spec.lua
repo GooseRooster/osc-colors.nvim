@@ -76,6 +76,63 @@ describe("highlights", function()
             assert.is_table(result.Function)
         end)
 
+        describe("treesitter capture fallback coverage", function()
+            -- Regression coverage for the bug class where a capture name a
+            -- modern grammar actually emits (e.g. razor/c_sharp/html/jsx) was
+            -- never explicitly defined here, so it silently fell back (per
+            -- Neovim's "more specific -> more generic" capture rule) onto a
+            -- less specific, differently-colored group instead of the
+            -- intended, already-computed color.
+
+            it("gives markup tags, attributes, and delimiters distinct colors", function()
+                local result = highlights.build(test_palette, default_cfg)
+
+                assert.is_string(result["@tag"].fg)
+                assert.is_string(result["@tag.attribute"].fg)
+                assert.is_string(result["@tag.delimiter"].fg)
+
+                assert.not_equal(result["@tag"].fg, result["@tag.attribute"].fg)
+                assert.not_equal(result["@tag"].fg, result["@tag.delimiter"].fg)
+                assert.not_equal(result["@tag.attribute"].fg, result["@tag.delimiter"].fg)
+            end)
+
+            it("links @tag.builtin so plain HTML tags stay distinct from components", function()
+                local result = highlights.build(test_palette, default_cfg)
+                assert.equal("Special", result["@tag.builtin"].link)
+            end)
+
+            it("keeps access/storage modifiers distinct from plain keywords", function()
+                local result = highlights.build(test_palette, default_cfg)
+                assert.equal("@storageclass", result["@keyword.modifier"].link)
+                assert.not_equal(result["Keyword"].fg, result["@storageclass"].fg)
+            end)
+
+            it("keeps preprocessor directives distinct from plain keywords", function()
+                local result = highlights.build(test_palette, default_cfg)
+                assert.equal("@preproc", result["@keyword.directive"].link)
+                assert.equal("@define", result["@keyword.directive.define"].link)
+            end)
+
+            it("keeps conditional/repeat keywords wired to their intended color", function()
+                local result = highlights.build(test_palette, default_cfg)
+                assert.equal("@conditional", result["@keyword.conditional"].link)
+                assert.equal("@keyword.conditional", result["@keyword.conditional.ternary"].link)
+                assert.equal("@repeat", result["@keyword.repeat"].link)
+            end)
+
+            it("keeps modern method captures wired to the same color as legacy @method", function()
+                local result = highlights.build(test_palette, default_cfg)
+                assert.equal("@method", result["@function.method"].link)
+                assert.equal("@method.call", result["@function.method.call"].link)
+            end)
+
+            it("fixes the @string.regex/@string.regexp naming mismatch", function()
+                local result = highlights.build(test_palette, default_cfg)
+                assert.is_string(result["@string.regexp"].fg)
+                assert.equal("@string.regexp", result["@string.regex"].link)
+            end)
+        end)
+
         it("resolves hex colors directly", function()
             local cfg = vim.tbl_deep_extend("force", default_cfg, {
                 highlights = {

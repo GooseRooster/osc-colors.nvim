@@ -225,13 +225,16 @@ doesn't look truecolor-capable).
 
 ## Contributing
 
-This project uses a [dev container] for a reproducible environment (Neovim,
-vusted, luacheck, stylua, lemmy-help) and [just] as a command runner. No local
-Lua/Rust toolchain needed — open the repo in VS Code and choose "Dev
-Containers: Reopen in Container" (or use the `devcontainer` CLI / GitHub
-Codespaces).
+This project uses a [Nix flake](https://nixos.org/) for a reproducible
+development environment (Neovim, vusted, luacheck, stylua, lua-language-server,
+lemmy-help) and [just] as a command runner. With Nix installed (with flakes
+enabled), run `nix develop` to drop into a shell with everything on `PATH` —
+no local Lua/Rust toolchain needed.
 
 ```sh
+# Enter the dev shell
+nix develop
+
 # List all justfile commands
 just list
 
@@ -247,10 +250,6 @@ just docs
 # Format files with stylua
 just fmt
 ```
-
-Want your own dotfiles/editor config inside the container too? See
-[`.devcontainer/local.example`](.devcontainer/local.example) — opt-in, gitignored,
-never affects other contributors or CI.
 
 ### Project structure
 
@@ -283,7 +282,6 @@ kept.
 
 See [LICENSE].
 
-[dev container]: https://containers.dev/
 [just]: https://github.com/casey/just
 [tinty]: https://github.com/tinted-theming/tinty
 [tinted-shell]: https://github.com/tinted-theming/tinted-shell

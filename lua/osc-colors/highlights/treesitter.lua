@@ -68,6 +68,12 @@ function M.build(palette, _aliases, _cfg)
 
         hl["@preproc"] = { fg = sx.meta.preprocessor }
         hl["@define"] = { fg = sx.keyword.declaration }
+        -- Modern grammars (e.g. c_sharp, c, cpp) emit "@keyword.directive(.define)"
+        -- for preprocessor directives ("#if", "#define", "#pragma", ...) rather
+        -- than the legacy captures above; link them together so directives keep
+        -- their distinct color instead of silently falling back to "@keyword".
+        hl["@keyword.directive"] = { link = "@preproc" }
+        hl["@keyword.directive.define"] = { link = "@define" }
         hl["@operator"] = { fg = ui.global.foreground.normal }
 
         hl["@punctuation.delimiter"] = { fg = sx.punctuation.separator }
@@ -75,7 +81,12 @@ function M.build(palette, _aliases, _cfg)
         hl["@punctuation.special"] = { fg = sx.punctuation.section }
 
         hl["@string"] = { fg = sx.string.default }
-        hl["@string.regex"] = { fg = sx.string.regexp }
+        -- NOTE: the canonical nvim-treesitter capture is "@string.regexp" (with
+        -- the trailing "p"); "@string.regex" is not emitted by any installed
+        -- grammar and was dead code. Both are defined here so any older/custom
+        -- query file spelling still resolves too.
+        hl["@string.regexp"] = { fg = sx.string.regexp }
+        hl["@string.regex"] = { link = "@string.regexp" }
         hl["@string.escape"] = { fg = sx.constant.character.escape }
         hl["@string.special"] = { fg = sx.string.other }
         hl["@string.special.symbol"] = { link = "@symbol" }
@@ -94,6 +105,11 @@ function M.build(palette, _aliases, _cfg)
 
         hl["@method"] = { fg = sx.entity.name["function"].default }
         hl["@method.call"] = { link = "@method" }
+        -- Modern grammars (e.g. c_sharp) emit "@function.method(.call)" rather
+        -- than the legacy "@method(.call)" captures above; link them together
+        -- so both spellings resolve to the same color.
+        hl["@function.method"] = { link = "@method" }
+        hl["@function.method.call"] = { link = "@method.call" }
 
         hl["@constructor"] = { fg = sx.entity.name["function"].constructor }
 
@@ -105,9 +121,18 @@ function M.build(palette, _aliases, _cfg)
         hl["@keyword.operator"] = { link = "@keyword" }
         hl["@keyword.return"] = { link = "@keyword" }
         hl["@keyword.exception"] = { link = "@keyword" }
+        hl["@keyword.coroutine"] = { link = "@keyword" }
+        hl["@keyword.debug"] = { link = "@keyword" }
+        hl["@keyword.type"] = { link = "@keyword" }
 
         hl["@conditional"] = { fg = sx.keyword.control.default }
         hl["@repeat"] = { fg = sx.keyword.control.default }
+        -- Modern grammars (e.g. c_sharp) emit "@keyword.conditional(.ternary)"
+        -- and "@keyword.repeat" rather than the legacy bare captures above;
+        -- link them together so both spellings resolve to the same color.
+        hl["@keyword.conditional"] = { link = "@conditional" }
+        hl["@keyword.conditional.ternary"] = { link = "@keyword.conditional" }
+        hl["@keyword.repeat"] = { link = "@repeat" }
 
         hl["@label"] = { fg = sx.entity.name.label }
 
@@ -126,11 +151,17 @@ function M.build(palette, _aliases, _cfg)
         hl["@event"] = { link = "Identifier" }
         hl["@interface"] = { link = "Structure" }
         hl["@modifier"] = { link = "Identifier" }
-        hl["@regexp"] = { link = "@string.regex" }
+        hl["@regexp"] = { link = "@string.regexp" }
         hl["@typeParameter"] = { link = "Type" }
         hl["@decorator"] = { link = "Identifier" }
 
         hl["@storageclass"] = { fg = sx.storage.modifier }
+        -- Modern grammars (e.g. c_sharp) emit "@keyword.modifier" for access/
+        -- storage modifiers ("public", "static", "readonly", "abstract", ...)
+        -- rather than the legacy "@storageclass" capture above; link them
+        -- together so modifiers keep their distinct color instead of silently
+        -- falling back to "@keyword".
+        hl["@keyword.modifier"] = { link = "@storageclass" }
 
         hl["@attribute"] = { fg = sx.entity.other["attribute-name"] }
 
@@ -150,6 +181,17 @@ function M.build(palette, _aliases, _cfg)
         hl["@module"] = { link = "@namespace" }
         hl["@module.builtin"] = { link = "@namespace" }
         hl["@symbol"] = { fg = pal.green.normal }
+
+        -- Markup tags (HTML/Razor/JSX/TSX/Vue/Svelte/XML): explicitly defined
+        -- so `@tag.attribute`/`@tag.delimiter` don't silently collapse onto
+        -- `@tag`'s color via Neovim's capture fallback (more-specific ->
+        -- more-generic) -- which is exactly what happened before this fix,
+        -- since neither this file nor upstream tinted-nvim defined them.
+        -- Deliberate divergence from upstream tinted-nvim for this reason.
+        hl["@tag"] = { fg = sx.entity.name.tag }
+        hl["@tag.builtin"] = { link = "Special" }
+        hl["@tag.attribute"] = { fg = sx.entity.other["tag-attribute-name"] }
+        hl["@tag.delimiter"] = { fg = sx.punctuation.separator }
 
         if vim.fn.has("nvim-0.10") == 1 then
             hl["@markup"] = { fg = sx.markup.default }
