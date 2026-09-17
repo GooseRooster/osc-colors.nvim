@@ -160,6 +160,7 @@ M.defaults = {
             dapui = true,
             lualine = true,
             snacks = true,
+            mini = true,
         },
         use_lazy_specs = true,
 

@@ -13,7 +13,7 @@ across `tinty apply` switches, without restarting Neovim.
 This is a fork of [tinted-nvim]'s highlight-group engine: the part that maps
 a palette onto ~600 correctly-aliased Neovim highlight groups across core UI,
 treesitter, LSP, diagnostics, and popular plugins (telescope, cmp, blink,
-dapui, lualine, notify, snacks). Only the palette *source* changed:
+dapui, lualine, notify, snacks, mini.nvim). Only the palette *source* changed:
 tinted-nvim resolves a *named* scheme from a file/env var/command that some
 external tool (`tinty`) maintains; osc-colors has no names or external tool at
 all, rather, it just asks the terminal what it's currently showing and hands that
@@ -211,6 +211,7 @@ require("osc-colors").setup({
       dapui     = true,
       lualine   = true,
       snacks    = true,
+      mini      = true,
     },
 
     -- Merge `highlights = { ... }` tables found in lazy.nvim plugin specs.
@@ -282,6 +283,15 @@ require("lualine").setup({
   },
 })
 ```
+
+### `mini.nvim`
+
+Setting `highlights.integrations.mini = true` is all that's needed. It
+covers every `Mini*` highlight group across the mini.nvim modules that define
+their own (statusline, tabline, starter, cursorword, indentscope, trailspace,
+jump, jump2d, notify, hipatterns, pick, files, diff, map, animate,
+completion, snippets, clue, operators, test, deps, icons, input, cmdline,
+surround). No further setup required.
 
 ## Health check
 

@@ -24,8 +24,8 @@
 ---`mapping = "base16"` for the classic static base16 slot mapping.
 ---
 ---Its highlight-group mapping and plugin integrations (treesitter, LSP,
----telescope, cmp, blink, dapui, lualine, notify, snacks) are a fork of
----tinted-nvim's engine -- only the palette *source* changed.
+---telescope, cmp, blink, dapui, lualine, notify, snacks, mini.nvim) are a
+---fork of tinted-nvim's engine -- only the palette *source* changed.
 ---@brief ]]
 ---@mod osc-colors.install Installation
 ---@brief [[

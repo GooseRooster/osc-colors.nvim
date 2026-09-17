@@ -26,6 +26,7 @@ local integrations = {
     dapui = "osc-colors.highlights.dapui",
     lualine = "osc-colors.highlights.lualine",
     snacks = "osc-colors.highlights.snacks",
+    mini = "osc-colors.highlights.mini",
 }
 
 -- Resolve a single color value.

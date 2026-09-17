@@ -332,6 +332,47 @@ describe("highlights", function()
         end)
     end)
 
+    describe("mini integration", function()
+        local function build_with_mini()
+            local cfg = vim.tbl_deep_extend("force", default_cfg, {
+                highlights = {
+                    integrations = { mini = true },
+                },
+            })
+            return highlights.build(test_palette, cfg)
+        end
+
+        it("is off by default", function()
+            local result = highlights.build(test_palette, default_cfg)
+            assert.is_nil(result.MiniStatuslineModeNormal)
+        end)
+
+        it("defines statusline mode colors distinct per mode", function()
+            local result = build_with_mini()
+            assert.is_string(result.MiniStatuslineModeInsert.bg)
+            assert.is_string(result.MiniStatuslineModeVisual.bg)
+            assert.not_equal(result.MiniStatuslineModeInsert.bg, result.MiniStatuslineModeVisual.bg)
+        end)
+
+        it("gives trailing whitespace a visible background", function()
+            local result = build_with_mini()
+            assert.is_string(result.MiniTrailspace.bg)
+        end)
+
+        it("gives mini.icons groups distinct colors", function()
+            local result = build_with_mini()
+            assert.not_equal(result.MiniIconsRed.fg, result.MiniIconsBlue.fg)
+            assert.not_equal(result.MiniIconsGreen.fg, result.MiniIconsYellow.fg)
+        end)
+
+        it("links diff overlay groups to the core Diff* groups", function()
+            local result = build_with_mini()
+            assert.equal("DiffAdd", result.MiniDiffOverAdd.link)
+            assert.equal("DiffText", result.MiniDiffOverChange.link)
+            assert.equal("DiffDelete", result.MiniDiffOverDelete.link)
+        end)
+    end)
+
     describe("apply", function()
         it("sets highlight groups via nvim_set_hl", function()
             local hl_defs = {

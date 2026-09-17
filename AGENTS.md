@@ -98,7 +98,7 @@ read-only.
 6. **`highlights/init.lua`** (`M.build`) is the aggregation point: it re-normalizes the palette (keep
    semantics preserve soul values), then merges output from the core domain builders (`core`, `syntax`,
    `treesitter`, `lsp`, `diagnostics` — always on), then opt-in integration builders (`telescope`,
-   `notify`, `cmp`, `blink`, `dapui`, `lualine`, `snacks`, keyed by `cfg.highlights.integrations`), then
+   `notify`, `cmp`, `blink`, `dapui`, `lualine`, `snacks`, `mini`, keyed by `cfg.highlights.integrations`), then
    `lazy.nvim` plugin-spec `highlights` tables (if `use_lazy_specs`), then user
    `cfg.highlights.overrides(palette)` — in that precedence order, last write wins per highlight group. Only
    after all merging does it resolve `fg`/`bg`/`sp` values: hex passes through, `"none"` becomes `NONE`,
@@ -133,6 +133,9 @@ nominal-cube/derive-accent extensions, the semantics tree, and the OSC/soul-spec
 `init.lua`/`health.lua`. The highlight-building engine (`colors.lua`, `aliases.lua`, `terminal.lua`, all of
 `highlights/`, the lualine theme) is forked from [tinted-nvim]; when touching engine files prefer matching
 tinted-nvim's existing conventions unless the change is part of the soul-mapping feature.
+`highlights/mini.lua` (mini.nvim integration) is an exception: it has no tinted-nvim upstream equivalent and
+is original to this project, added by re-targeting each mini.nvim module's own suggested default highlight
+mapping onto osc-colors' equivalent groups.
 `types.lua` documents the palette/config shapes with `@class`/`@field` annotations consumed by
 lua-language-server and lemmy-help.
 

@@ -29,14 +29,14 @@ terminal's *actual* (queried, possibly remapped) 256-color cube.
 By default (`mapping = "soul"`), highlight groups are painted by *role*:
 the palette's "soul" (dominant hues, chroma envelope, lightness envelope)
 is extracted and each highlight role's color is resolved through OKLCH
-color math -- a warm theme leans its whole role system warm, a monochrome
+color math. A warm theme leans its whole role system warm, a monochrome
 theme gets structured grayscale. Semantic exceptions (errors, warnings,
 diffs) stay anchored to their conventional hue sectors. Set
 `mapping = "base16"` for the classic static base16 slot mapping.
 
 Its highlight-group mapping and plugin integrations (treesitter, LSP,
-telescope, cmp, blink, dapui, lualine, notify, snacks) are a fork of
-tinted-nvim's engine -- only the palette *source* changed.
+telescope, cmp, blink, dapui, lualine, notify, snacks, mini.nvim) are a
+fork of tinted-nvim's engine -- only the palette *source* changed.
 
 ==============================================================================
 Installation                                                *osc-colors.install*
