@@ -55,12 +55,12 @@ describe("osc", function()
     -- `refresh_async`'s success path calls back from inside `vim.schedule`,
     -- so a plain synchronous fire-and-check won't see the result -- the main
     -- loop needs a chance to run the scheduled callback first.
-    local function refresh_and_wait(overrides)
+    local function refresh_and_wait(overrides, opts)
         local result, done = "not-yet-called", false
         osc.refresh_async(function(p)
             result = p
             done = true
-        end)
+        end, opts)
         fire_full_round(overrides)
         vim.wait(200, function()
             return done
@@ -162,6 +162,38 @@ describe("osc", function()
             local result = refresh_and_wait()
 
             assert.is_nil(result)
+        end)
+
+        it("repaints a stale instance even when a sibling instance already cached the new palette", function()
+            -- Instance A painted the old palette; instance B then refreshed
+            -- and cached the new one. A's next refresh sees the new palette,
+            -- which matches the shared cache but not what A has painted.
+            local old = refresh_and_wait({ bg = "1a1a/1a1a/1a1a" })
+            refresh_and_wait({ bg = "2b2b/2b2b/2b2b" })
+
+            local result = refresh_and_wait({ bg = "2b2b/2b2b/2b2b" }, { current = old })
+
+            assert.is_table(result)
+            assert.equal("#2b2b2b", result.base00)
+        end)
+
+        it("calls back with nil when the round matches `current`, even if the cache differs", function()
+            local mine = refresh_and_wait({ bg = "1a1a/1a1a/1a1a" })
+            refresh_and_wait({ bg = "2b2b/2b2b/2b2b" }) -- a sibling caches something else
+
+            local result = refresh_and_wait({ bg = "1a1a/1a1a/1a1a" }, { current = mine })
+
+            assert.is_nil(result)
+            -- The cache still tracks the latest live answer.
+            assert.equal("#1a1a1a", osc.load_cached().base00)
+        end)
+
+        it("treats `current = false` as nothing painted yet, ignoring a matching cache", function()
+            refresh_and_wait()
+
+            local result = refresh_and_wait(nil, { current = false })
+
+            assert.is_table(result)
         end)
 
         it("calls back with nil on timeout when the terminal never answers", function()

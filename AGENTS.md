@@ -66,6 +66,12 @@ read-only.
      is cached to `stdpath("cache")/osc-colors-palette.lua` so the next startup paints instantly, before the
      async query resolves. If the terminal never answers and there's no cache, osc-colors leaves Neovim's
      defaults untouched — there's no bundled fallback palette by design.
+   - The "unchanged → callback nil" check diffs against `opts.current` (the flat, pre-normalization palette
+     this instance last applied, tracked by `init.lua`), *not* the disk cache: the cache is shared by every
+     Neovim instance, so diffing against it made a stale instance skip repainting once a sibling had cached
+     the new palette. The cache is still rewritten whenever the fresh palette differs from it.
+   - Multiplexers that emulate panes (herdr) answer OSC queries from their own snapshot of the outer
+     terminal, so a stale answer there is not ours to fix — `health.lua` warns about it.
 2. **`capability.lua`** (original) probes and decides the tier. Only replies naming `RGB`/`Tc` count as
    probe answers — Neovim ≥0.11 sends its *own* XTGETTCAP traffic (clipboard/OSC52 caps like `Ms`), whose
    replies land in the same TermResponse stream and must not be miscounted as probed-negatives. Inside

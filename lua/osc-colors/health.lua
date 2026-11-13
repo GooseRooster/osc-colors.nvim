@@ -91,6 +91,14 @@ function M.check()
         vim.health.info("not running inside tmux")
     end
 
+    if vim.env.HERDR_ENV or vim.env.TERM_PROGRAM == "herdr" then
+        vim.health.warn(
+            "running inside herdr -- herdr answers OSC 4/10/11 from its own snapshot of the outer terminal's "
+                .. "colors, retaken only on attach, window resize, or a dark/light switch; after a same-appearance "
+                .. "theme change, resize the window, reattach, or restart herdr, then run :OscColorsRefresh"
+        )
+    end
+
     local term = vim.env.TERM or ""
     if term:match("256color") or term:match("direct") or term == "xterm-ghostty" then
         vim.health.ok(string.format("$TERM=%s looks truecolor-capable", term))

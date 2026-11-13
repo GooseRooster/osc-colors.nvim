@@ -415,11 +415,15 @@ end
 --      timeout still yields a complete palette.
 --
 -- Calls `on_result(palette)` exactly once, where `palette` is the freshly
--- synthesized table if it differs from the last cached one, or nil if the
--- query timed out or nothing changed. Safe to call repeatedly; no-ops (does
--- not call `on_result`) if a query is already in flight.
+-- synthesized table if it differs from `opts.current` (the palette the
+-- caller currently has painted; `false` = nothing painted yet), or nil if the
+-- query timed out or nothing changed. Without `opts.current` the comparison
+-- falls back to the disk cache -- which is shared across Neovim instances, so
+-- long-lived callers should pass `current`. The disk cache is rewritten
+-- whenever the fresh palette differs from it. Safe to call repeatedly;
+-- no-ops (does not call `on_result`) if a query is already in flight.
 ---@param on_result fun(palette: table|nil)
----@param opts? { timeout_ms?: number, cube?: fun(tier: string): boolean }
+---@param opts? { timeout_ms?: number, current?: table|false, cube?: fun(tier: string): boolean }
 function M.refresh_async(on_result, opts)
     if in_flight then
         dbg("refresh_async called while already in flight -- ignoring")
@@ -518,14 +522,25 @@ function M.refresh_async(on_result, opts)
             return
         end
 
+        -- The cache is shared by every Neovim instance, so it can't stand in
+        -- for "what this instance has painted": once a sibling instance
+        -- caches a new palette, an instance still painted with the old one
+        -- would see "unchanged" and never repaint. Callers that track their
+        -- own applied palette pass it as `opts.current`.
         local cached = M.load_cached()
-        if palettes_equal(palette, cached) then
+        if not palettes_equal(palette, cached) then
+            write_cache(palette)
+        end
+        local baseline = cached
+        if opts.current ~= nil then
+            baseline = opts.current or nil
+        end
+        if palettes_equal(palette, baseline) then
             dbg("round %d: on_result(nil) [unchanged]", my_round)
             on_result(nil)
             return
         end
 
-        write_cache(palette)
         dbg("round %d: on_result(palette)", my_round)
         on_result(palette)
     end
@@ -551,9 +566,11 @@ function M.refresh_async(on_result, opts)
         end
 
         -- Skip the 240-query cube round when nothing about the palette
-        -- changed and the cache already carries a cube.
+        -- changed and the cache already carries a cube (reused as-is, so an
+        -- instance repainting from this round still snaps to it).
         local cached = M.load_cached()
         if base_equal(palette, cached) and cached.cube then
+            palette.cube = cached.cube
             finish(true)
             return
         end

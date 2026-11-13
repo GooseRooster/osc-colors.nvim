@@ -329,8 +329,8 @@ capability tier and what evidence decided it, whether a palette is currently
 applied, the active mapping mode (plus the soul's families by salience and
 the family each role group landed on, when soul mapping is on), whether a
 disk cache exists, and flags common gotchas
-(running inside tmux without `allow-passthrough`, a `$TERM` that doesn't look
-truecolor-capable).
+(running inside tmux without `allow-passthrough`, running inside herdr, a
+`$TERM` that doesn't look truecolor-capable).
 
 ## Troubleshooting
 
@@ -338,6 +338,15 @@ truecolor-capable).
   reach the outer terminal if tmux's `allow-passthrough` is set (and your
   tmux is new enough to relay the *replies* back to Neovim, not just forward
   the query). Run `:checkhealth osc-colors` — it flags this.
+- **Colors never update inside [herdr]**: herdr doesn't forward OSC queries
+  to your terminal. Each pane answers them itself from a snapshot of the
+  outer terminal's colors, which herdr only re-takes when a client attaches,
+  when the window is resized, or when the terminal reports a dark↔light
+  switch. A theme change that stays dark (or stays light) leaves every pane
+  answering with the old colors, so osc-colors faithfully repaints the old
+  scheme. Resize the outer terminal window, detach and reattach
+  (`ctrl+b q`, then `herdr`), or restart herdr, then `:OscColorsRefresh`.
+  `:checkhealth osc-colors` flags this.
 - **Nothing happens on a fresh machine / SSH session**: the terminal (or
   whatever's in the middle of the PTY chain) may not answer OSC queries at
   all. osc-colors leaves Neovim's defaults alone in that case rather than
@@ -422,6 +431,7 @@ deliberately diverges from upstream rather than tracking it.
 See [LICENSE].
 
 [just]: https://github.com/casey/just
+[herdr]: https://herdr.dev
 [tinty]: https://github.com/tinted-theming/tinty
 [tinted-shell]: https://github.com/tinted-theming/tinted-shell
 [tinted-nvim]: https://github.com/tinted-theming/tinted-nvim

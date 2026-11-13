@@ -73,6 +73,11 @@ local public_state = {
     palette_aliases = nil,
 }
 
+-- The flat palette last handed to M.apply, before normalization/soul
+-- rewrites (which change the gray ramp). refresh() diffs fresh query results
+-- against this rather than the shared disk cache; see osc.refresh_async.
+local applied_flat = nil
+
 ---@mod osc-colors.api API
 ---@brief [[
 ---The main API functions for osc-colors.
@@ -91,6 +96,7 @@ function M.apply(palette)
 
     local cfg = config.options or config.defaults
 
+    local flat = vim.deepcopy(palette)
     palette = colors.normalize(palette)
 
     -- Soul mapping: regenerate the palette tree's role colors from the
@@ -129,6 +135,7 @@ function M.apply(palette)
 
     public_state.palette = palette
     public_state.palette_aliases = aliases.build(palette)
+    applied_flat = flat
 
     vim.api.nvim_exec_autocmds("ColorScheme", { pattern = "osc-colors" })
 end
@@ -140,6 +147,7 @@ function M.refresh()
     local cfg = config.options or config.defaults
     osc.refresh_async(M.apply, {
         timeout_ms = cfg.capabilities.query_timeout_ms,
+        current = applied_flat or false,
         -- Lazy 256-cube query: only soul mapping on a probed 256-only
         -- terminal needs the terminal's real (possibly remapped) cube for
         -- snapping. Everything else skips the 240 extra queries.

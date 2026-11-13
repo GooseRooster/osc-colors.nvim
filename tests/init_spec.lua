@@ -202,5 +202,36 @@ describe("init", function()
             assert.is_function(received_callback)
             assert.equal(oc.apply, received_callback)
         end)
+
+        it("passes the flat palette this instance last applied as `current`", function()
+            local received_opts = nil
+            package.preload["osc-colors.osc"] = function()
+                return {
+                    load_cached = function()
+                        return nil
+                    end,
+                    refresh_async = function(_, opts)
+                        received_opts = opts
+                    end,
+                }
+            end
+            reset_modules()
+            oc = require("osc-colors")
+            oc.setup({ refresh_on = {} })
+
+            oc.refresh()
+            assert.is_false(received_opts.current)
+
+            oc.apply(fake_palette)
+            oc.refresh()
+
+            package.preload["osc-colors.osc"] = nil
+
+            assert.is_table(received_opts.current)
+            -- The pre-normalization palette: soul mapping rewrites the gray
+            -- ramp, which would never compare equal to a fresh query.
+            assert.equal(fake_palette.base01, received_opts.current.base01)
+            assert.is_nil(received_opts.current.palette)
+        end)
     end)
 end)
