@@ -35,12 +35,15 @@ osc-colors sends:
 
 - an `XTGETTCAP` probe for the terminal's `RGB`/`Tc` (truecolor) capabilities
 - `OSC 4` queries for ANSI colors 1–6 (red/green/yellow/blue/magenta/cyan)
+  and their bright variants 9–14 (optional: a terminal that skips them still
+  gets a full palette)
 - `OSC 10`/`OSC 11` for the terminal's current foreground/background
 
 ...and synthesizes a full base16 palette from the replies: the grayscale ramp
 (`base01`-`base06`) is interpolated between background and foreground, and the
 two base16 slots with no ANSI color of their own — orange (`base09`) and brown
 (`base0F`) — are derived from red/yellow and red/background respectively. The
+brights ride along separately for soul mapping. The
 result (plus the probed capability tier) is cached to disk
 (`stdpath("cache")/osc-colors-palette.lua`) so the next startup can paint
 instantly, before the (async, ~200ms timeout) live query resolves.
@@ -71,19 +74,41 @@ So then my friday coffee-addled brain thought - what if we defined highlight gro
 
 Thus the soul concept was born, in essence inspired by the unique palette-based role mappings some of the most popular vim colorschemes out there use.
 
-In this system, highlight groups aren't assigned fixed slots: They're assigned *roles*.
-Importance tier, hue offset from the scheme's dominant hue, chroma scale,
-lightness weight all resolved through the palette's extracted **soul**
-(circular hue statistics, chroma envelope, lightness envelope) with OKLCH
-color math. A warm theme leans its whole role system warm; a monochrome theme
-gets structured grayscale with lightness-based differentiation; the same
-algorithm, radically different palettes out.
+In this system, highlight groups aren't assigned fixed slots: they're
+assigned *roles*, and roles are assigned to the scheme's **own colors**.
 
-Semantic exceptions resist full relativization: errors, warnings, diffs and
-friends stay anchored to their conventional hue *sectors* (errors are always
-red-ish, whatever the scheme's soul), with the soul only placing the exact
-hue, chroma and lightness within the sector. Set `mapping = "base16"` for the
-classic static base16 slot mapping, bit-identical to the old behavior.
+The palette's **soul** is its set of color *families* — the six ANSI hues,
+with each bright variant either folded in as a lighter/darker *shade* or,
+when the designer gave it its own hue (solarized's orange and violet live in
+its brights), promoted to a family of its own. Each family is scored by
+*salience*, i.e. how much the designer invested in it:
+
+- **vividness** — chroma relative to what sRGB can carry at that hue and
+  lightness (so vivid yellows aren't outshouted by reds just because red's
+  gamut reaches farther)
+- **cohesion** — closeness to the scheme's other strong colors
+- **shift** — how far the hue was deliberately moved from the stock ANSI
+  position (rosé pine's "green" is really a teal)
+
+Roles come in six groups — keyword, function, type, string, constant,
+special — and an exact search picks the family for each group, putting the
+most prominent groups on the most salient families while keeping groups that
+sit side by side in code (keyword/function, function/type, string/escape …)
+apart. Gruvbox ends up speaking in its reds, yellows and greens and barely
+touches its muted blue; nord stays in its frost; dracula gets pink keywords
+and green functions. Within a group, member roles are small variations of
+the lead color (the bright shade, lightness/chroma steps, a few degrees of
+hue drift), and **italic/bold** are spent exactly where color runs out: a
+group sharing its color with a more prominent one, members too close to
+tell apart, or a grayscale scheme where color can't separate anything.
+Headings are always bold.
+
+Semantic exceptions resist the soul: errors, warnings, diffs and friends
+stay anchored to their conventional hue *sectors* (errors are always
+red-ish), but use the scheme's own color for that sector whenever it has
+one. Set `mapping = "base16"` for the classic static base16 slot mapping,
+bit-identical to the old behavior. `:checkhealth osc-colors` shows the
+families, their salience, and which family each role group landed on.
 
 If the terminal never answers (a non-OSC-capable terminal, tmux without
 passthrough configured, a dumb `$TERM`) **and there's no cache yet**,
@@ -146,40 +171,44 @@ require("osc-colors").setup({
     terminal_colors = true, -- default `true`
   },
 
-  -- Highlight mapping mode: "soul" derives role colors from the palette's
-  -- extracted soul via OKLCH color math (semantic exceptions stay anchored
-  -- to their conventional hue sectors); "base16" is the classic static slot
-  -- mapping, bit-identical to the old behavior.
+  -- Highlight mapping mode: "soul" assigns highlight roles to the terminal
+  -- scheme's own color families by salience (semantic exceptions stay
+  -- anchored to their conventional hue sectors); "base16" is the classic
+  -- static slot mapping, bit-identical to the old behavior.
   mapping = "soul", -- default `"soul"`
 
   -- Soul-mapping tuning knobs (only used when mapping = "soul").
   soul = {
-    -- Semantic exception policy: "sector" keeps errors/warnings/diffs
-    -- anchored to their conventional hue sectors; "derived" fully
-    -- soul-derives them (experimental, cohesion over convention).
-    -- think errors => mapping to a reddish color, etc
-    semantic = "sector", -- default `"sector"`
-
     -- Minimum WCAG contrast for text roles against the background.
     contrast_target = 4.5, -- default `4.5`
 
-    -- Scales the soul's chroma envelope ceiling (1.0 = as extracted).
-    chroma_ceiling_scale = 1.0, -- default `1.0`
+    -- Soul-assigned italic/bold: "auto" spends styles only where color
+    -- can't tell roles apart (plus bold headings), "always" applies every
+    -- role's style, false disables them. `styles` below always wins.
+    styles = "auto", -- default `"auto"`
 
-    -- Per-role descriptor overrides, keyed by role name. Roles include:
-    -- keyword, type, import, heading, function, constant, float, character,
-    -- escape, string, regexp, flow, modifier, tag, namespace, link,
+    -- Pin a role group (keyword, function, type, string, constant,
+    -- special) to a color family (red, green, yellow, blue, magenta, cyan,
+    -- or bright_<name> when a bright has its own hue). Pins naming a
+    -- family the scheme doesn't have are ignored.
+    pin = {
+      -- string = "green",
+    },
+
+    -- Per-role tweaks, keyed by role name. Roles include:
+    -- keyword, flow, import, modifier, function, type, namespace, tag,
+    -- string, regexp, character, constant, float, escape, heading, link,
     -- comment, punctuation, punct_section, variable, parameter, property,
     -- and the semantic roles: error, warning, info, hint, success,
     -- deprecated, diff_add, diff_delete, diff_change.
     --
-    -- Syntax roles accept `offset` (hue degrees from the dominant hue),
-    -- `weight` (0 = background, 1 = foreground lightness), and `chroma`
-    -- (scale on the soul's chroma ceiling). Semantic roles accept `sector`
-    -- (hue bounds in degrees) and `source` (preferred base slot).
+    -- Each accepts `lightness` (OKLCH L step, positive = toward the
+    -- foreground), `chroma` (scale), `hue` (degrees of drift) and `style`
+    -- (a text-attribute table, or false to suppress the soul's style).
     roles = {
-      -- keyword = { offset = 12, weight = 0.8 },
-      -- error = { sector = { 0, 30 } },
+      -- keyword = { lightness = 0.05 },
+      -- heading = { style = false },
+      -- parameter = { style = { italic = true } },
     },
   },
 
@@ -297,8 +326,9 @@ surround). No further setup required.
 
 `:checkhealth osc-colors` reports whether `termguicolors` is on, the probed
 capability tier and what evidence decided it, whether a palette is currently
-applied, the active mapping mode (plus the extracted soul descriptor when
-soul mapping is on), whether a disk cache exists, and flags common gotchas
+applied, the active mapping mode (plus the soul's families by salience and
+the family each role group landed on, when soul mapping is on), whether a
+disk cache exists, and flags common gotchas
 (running inside tmux without `allow-passthrough`, a `$TERM` that doesn't look
 truecolor-capable).
 
@@ -363,8 +393,8 @@ lua/osc-colors/
   config.lua        # Default configuration
   osc.lua           # OSC 4/10/11 + XTGETTCAP queries, parsing, cache (original)
   capability.lua    # Terminal capability probing & tier decision (original)
-  soul.lua          # Soul descriptor extraction: circular hue stats, envelopes (original)
-  roles.lua         # Role-based highlight color generation & tree application (original)
+  soul.lua          # Soul extraction: color families, gamut-relative salience (original)
+  roles.lua         # Role groups -> families search, role colors/styles, tree application (original)
   oklch.lua         # OKLab/OKLCH color math, gamut clamping, ΔE, contrast (original)
   colors.lua        # Palette shape normalizer (forked from tinted-nvim)
   highlights/        # Highlight group builders (forked from tinted-nvim)

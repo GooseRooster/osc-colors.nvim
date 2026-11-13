@@ -1,39 +1,24 @@
 describe("soul", function()
     local soul
     local oklch
+    local fx = dofile("tests/fixtures/schemes.lua")
 
     before_each(function()
         soul = require("osc-colors.soul")
         oklch = require("osc-colors.oklch")
     end)
 
-    -- Gruvbox-flavored: warm hues, dark background
-    local warm_dark = {
-        base00 = "#282828",
-        base07 = "#ebdbb2",
-        base08 = "#fb4934", -- red ~29deg
-        base09 = "#fe8019", -- orange
-        base0A = "#fabd2f", -- yellow
-        base0B = "#b8bb26", -- green
-        base0C = "#8ec07c", -- aqua
-        base0D = "#83a598", -- blue
-        base0E = "#d3869b", -- purple
-        base0F = "#d65d0e",
-    }
+    local function scheme(name, opts)
+        return fx.to_palette(fx.schemes[name], opts)
+    end
 
-    -- Nord-flavored: cool hues, muted chroma
-    local cool_muted = {
-        base00 = "#2e3440",
-        base07 = "#eceff4",
-        base08 = "#bf616a", -- red
-        base09 = "#d08770", -- orange
-        base0A = "#ebcb8b", -- yellow
-        base0B = "#a3be8c", -- green
-        base0C = "#88c0d0", -- cyan
-        base0D = "#81a1c1", -- blue
-        base0E = "#b48ead", -- magenta
-        base0F = "#a3be8c",
-    }
+    local function names_of(list)
+        local out = {}
+        for _, f in ipairs(list) do
+            table.insert(out, f.name)
+        end
+        return out
+    end
 
     local monochrome = {
         base00 = "#111111",
@@ -49,111 +34,172 @@ describe("soul", function()
     }
 
     describe("extract", function()
-        it("computes the circular hue mean without ring wraparound nonsense", function()
-            local s = soul.extract(warm_dark)
-            -- gruvbox hues: red 29, orange ~41, yellow ~90, green ~100,
-            -- aqua ~130, blue ~250, purple ~330 -- chroma-weighted mass
-            -- should sit in the warm arc, nowhere near 180 or 240
-            assert.is_true(s.hue_mean < 140 or s.hue_mean > 300, "hue mean should be warm-ish, got " .. s.hue_mean)
-            assert.is_true(s.hue_kappa > 0, "kappa should be positive for a colorful scheme")
+        it("builds one family per chromatic ANSI hue", function()
+            local s = soul.extract(scheme("onedark"))
+            assert.same({ "red", "green", "yellow", "blue", "magenta", "cyan" }, names_of(s.families))
+            assert.equal(6, #s.ranked)
+            assert.is_false(s.achromatic)
         end)
 
-        it("detects warm vs cool bias", function()
-            local warm = soul.extract(warm_dark)
-            local cool = soul.extract(cool_muted)
-            assert.is_true(warm.warm_bias > cool.warm_bias, "gruvbox-ish should lean warmer than nord-ish")
+        it("ranks families by salience, most characteristic first", function()
+            local s = soul.extract(scheme("gruvbox"))
+            for i = 2, #s.ranked do
+                assert.is_true(s.ranked[i - 1].salience >= s.ranked[i].salience)
+            end
+            assert.equal(s.ranked[1], s.dominant)
+            assert.equal(s.dominant.H, s.dominant_hue)
+        end)
+
+        it("judges vividness against the gamut, not raw chroma", function()
+            -- gruvbox's red has the highest raw OKLCH chroma, but its yellow
+            -- and green sit far closer to their (much lower) gamut ceilings
+            local s = soul.extract(scheme("gruvbox"))
+            local red, yellow = soul.family(s, "red"), soul.family(s, "yellow")
+            assert.is_true(red.C > yellow.C)
+            assert.is_true(yellow.rel > red.rel)
+            -- and the muted blue is not where gruvbox's soul lives
+            assert.is_true(soul.family(s, "blue").salience < yellow.salience)
+        end)
+
+        it("treats a same-hue bright as a shade of its family", function()
+            local s = soul.extract(scheme("dracula"))
+            local red = soul.family(s, "red")
+            assert.is_table(red.shade)
+            assert.equal("#ff6e6e", red.shade.hex)
+            assert.equal(6, #s.families)
+        end)
+
+        it("promotes a bright with its own hue to a family of its own", function()
+            -- solarized's bright red is its orange and bright magenta its
+            -- violet; its other brights are grays and stay out entirely
+            local s = soul.extract(scheme("solarized"))
+            assert.is_table(soul.family(s, "bright_red"))
+            assert.is_table(soul.family(s, "bright_magenta"))
+            assert.is_nil(soul.family(s, "bright_green"))
+            assert.is_nil(soul.family(s, "bright_blue"))
+        end)
+
+        it("works without brights (pre-v3 cache)", function()
+            local s = soul.extract(scheme("solarized", { brights = false }))
+            assert.equal(6, #s.families)
+            assert.is_nil(soul.family(s, "bright_red"))
+        end)
+
+        it("reads base24 bright slots when no OSC brights are present", function()
+            local p = scheme("dracula", { brights = false })
+            p.base12 = "#ff6e6e"
+            local s = soul.extract(p)
+            assert.equal("#ff6e6e", soul.family(s, "red").shade.hex)
+        end)
+
+        it("folds near-identical colors into one family", function()
+            local p = scheme("onedark", { brights = false })
+            p.base0C = "#e06d76" -- "cyan" that is really the same red
+            local s = soul.extract(p)
+            assert.equal(5, #s.families)
+            local red = soul.family(s, "red")
+            assert.equal(red, soul.family(s, "cyan"))
+        end)
+
+        it("keeps gray anchors out of the family set", function()
+            local p = scheme("nord", { brights = false })
+            p.base0E = "#888888"
+            local s = soul.extract(p)
+            assert.is_nil(soul.family(s, "magenta"))
+            assert.equal(6, #s.anchors)
+        end)
+
+        it("lets a chromatic bright carry a family whose normal is gray", function()
+            local p = scheme("onedark")
+            p.base0E = "#888888"
+            local s = soul.extract(p)
+            assert.equal("#c678dd", soul.family(s, "magenta").hex)
         end)
 
         it("flags achromatic souls", function()
             local s = soul.extract(monochrome)
             assert.is_true(s.achromatic)
-            assert.is_true(s.chroma_max < 0.01)
+            assert.equal(0, #s.families)
+            assert.is_nil(s.dominant)
+            assert.equal(0, s.chroma_max)
         end)
 
         it("records the lightness envelope", function()
-            local s = soul.extract(warm_dark)
-            local bg_L = select(1, oklch.hex_to_oklch("#282828"))
-            local fg_L = select(1, oklch.hex_to_oklch("#ebdbb2"))
-            assert.is_true(math.abs(s.bg_L - bg_L) < 1e-9)
-            assert.is_true(math.abs(s.fg_L - fg_L) < 1e-9)
+            local p = scheme("gruvbox")
+            local s = soul.extract(p)
+            assert.is_true(math.abs(s.bg_L - select(1, oklch.hex_to_oklch(p.base00))) < 1e-9)
+            assert.is_true(math.abs(s.fg_L - select(1, oklch.hex_to_oklch(p.base07))) < 1e-9)
+            assert.equal("dark", s.variant)
+            assert.equal("light", soul.extract(scheme("github_light")).variant)
         end)
 
         it("is deterministic for the same input", function()
-            local a = soul.extract(warm_dark)
-            local b = soul.extract(warm_dark)
-            assert.equal(a.hue_mean, b.hue_mean)
-            assert.equal(a.hue_kappa, b.hue_kappa)
-            assert.equal(a.warm_bias, b.warm_bias)
+            local a = soul.extract(scheme("kanagawa"))
+            local b = soul.extract(scheme("kanagawa"))
+            assert.same(names_of(a.ranked), names_of(b.ranked))
+            for i, f in ipairs(a.ranked) do
+                assert.equal(f.salience, b.ranked[i].salience)
+            end
         end)
 
-        it("handles antipodal hues without NaN", function()
-            -- two anchors on opposite sides of the wheel: kappa ~ 0
-            local s = soul.extract({
-                base00 = "#000000",
-                base07 = "#ffffff",
-                base08 = "#ff0000",
-                base09 = "#ff0000",
-                base0A = "#00ff00",
-                base0B = "#00ffff",
-                base0C = "#00ffff",
-                base0D = "#0000ff",
-                base0E = "#ff0000",
-                base0F = "#ff00ff",
-            })
-            assert.is_number(s.hue_mean)
-            assert.is_false(s.hue_mean ~= s.hue_mean, "hue mean must not be NaN")
-            assert.is_number(s.hue_kappa)
-            assert.is_true(s.hue_kappa < 0.7, "antipodal hues should yield low concentration")
+        it("falls back to tree paths for tree-only palettes", function()
+            local colors = require("osc-colors.colors")
+            local p = colors.normalize(scheme("nord"))
+            p.base08 = nil
+            local s = soul.extract(p)
+            assert.is_table(soul.family(s, "red"))
         end)
     end)
 
-    describe("sector_hue", function()
-        it("keeps an anchor hue that already lives in the sector", function()
-            local s = soul.extract(warm_dark)
-            local red_hue = select(3, oklch.hex_to_oklch("#fb4934")) -- ~29deg
-            local hue = soul.sector_hue(s, "base08", { 0, 40 })
-            assert.is_true(math.abs(hue - red_hue) < 1.0)
+    describe("sector_color", function()
+        it("keeps the source color when it already lives in the sector", function()
+            local s = soul.extract(scheme("gruvbox"))
+            local pick = soul.sector_color(s, "red", { 0, 40 })
+            local red = soul.family(s, "red")
+            assert.equal(red, pick.family)
+            assert.equal(red.H, pick.H)
+            assert.equal(red.L, pick.L)
         end)
 
-        it("clamps an off-sector anchor to the nearest sector edge", function()
-            -- a theme whose "red" anchor is actually cyan (H~201): nearest
-            -- edge is the *low* one, through the wraparound
-            local s = soul.extract({
-                base00 = "#000000",
-                base07 = "#ffffff",
-                base08 = "#00c8d2", -- cyan-ish "red"
-                base09 = "#00c8d2",
-                base0A = "#00c8d2",
-                base0B = "#00c8d2",
-                base0C = "#00c8d2",
-                base0D = "#00c8d2",
-                base0E = "#00c8d2",
-                base0F = "#00c8d2",
-            })
-            local hue = soul.sector_hue(s, "base08", { 0, 40 })
-            assert.equal(0, hue) -- nearest edge via wraparound
-
-            -- a green anchor (H~100) is nearest the *high* edge
-            local green = oklch.oklch_to_hex(0.7, 0.15, 100)
-            local s2 = soul.extract({
-                base00 = "#000000",
-                base07 = "#ffffff",
-                base08 = green,
-                base09 = green,
-                base0A = green,
-                base0B = green,
-                base0C = green,
-                base0D = green,
-                base0E = green,
-                base0F = green,
-            })
-            assert.equal(40, soul.sector_hue(s2, "base08", { 0, 40 }))
+        it("clamps a source just outside the sector to the nearest edge", function()
+            -- xterm blue (~264deg) is just past the info sector's 250 edge
+            local s = soul.extract(scheme("xterm"))
+            local pick = soul.sector_color(s, "blue", { 190, 250 })
+            assert.equal("blue", pick.family.name)
+            assert.equal(250, pick.H)
         end)
 
-        it("falls back to the sector midpoint when the anchor is missing", function()
-            local s = soul.extract({ base00 = "#000000", base07 = "#ffffff" })
-            local hue = soul.sector_hue(s, "base08", { 0, 40 })
-            assert.equal(20, hue)
+        it("clamps through the wraparound", function()
+            local p = scheme("onedark")
+            p.base08 = oklch.oklch_to_hex(0.65, 0.15, 350)
+            local s = soul.extract(p)
+            assert.equal(0, soul.sector_color(s, "red", { 0, 40 }).H)
+        end)
+
+        it("borrows the scheme's own in-sector color when the source is far off", function()
+            -- a "red" that is really blue: the scheme's actual red-sector
+            -- color (its magenta-ish pink) is borrowed instead
+            local p = scheme("onedark")
+            p.base08 = "#3070ff"
+            p.base0E = oklch.oklch_to_hex(0.7, 0.15, 20)
+            local s = soul.extract(p)
+            local pick = soul.sector_color(s, "red", { 0, 40 })
+            assert.equal("magenta", pick.family.name)
+        end)
+
+        it("skips families already taken by other semantic roles", function()
+            local p = scheme("onedark")
+            p.base08 = "#3070ff"
+            p.base0E = oklch.oklch_to_hex(0.7, 0.15, 20)
+            local s = soul.extract(p)
+            local taken = { [soul.family(s, "magenta")] = true }
+            local pick = soul.sector_color(s, "red", { 0, 40 }, taken)
+            assert.are_not.equal("magenta", pick.family.name)
+            assert.is_true(pick.H >= 0 and pick.H <= 40)
+        end)
+
+        it("returns nil for an achromatic soul", function()
+            assert.is_nil(soul.sector_color(soul.extract(monochrome), "red", { 0, 40 }))
         end)
     end)
 end)

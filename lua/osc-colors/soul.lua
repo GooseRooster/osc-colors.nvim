@@ -1,43 +1,64 @@
--- Soul extraction: distill a palette's "soul" -- a low-dimensional
--- descriptor of what a terminal theme actually *is* -- from the queried
--- anchors.
+-- Soul extraction: distill a palette's "soul" -- what a terminal theme
+-- actually *is* -- from the queried anchors.
 --
--- The descriptor drives role-based highlight mapping (roles.lua): what hue
--- family the scheme orbits, how tightly (hue concentration), how saturated
--- it is (chroma envelope), how much lightness room exists (bg/fg envelope),
--- and whether it's effectively achromatic. Everything downstream is a pure
--- function of this descriptor, so soul mapping is deterministic and
--- snapshot-testable.
+-- A terminal palette must cover all six ANSI hue families, so any single
+-- "average hue" of it is mostly noise. What carries a scheme's character is
+-- the designer's per-color choices: which hues they made vivid and which
+-- they muted, which ones they moved away from the stock ANSI positions,
+-- where their strong colors cluster. The soul is therefore a set of color
+-- *families* (the scheme's own colors, with their bright variants as
+-- shades), each scored by *salience* -- how much the designer invested in
+-- it. Role mapping (roles.lua) assigns highlight roles to these families;
+-- everything downstream is a pure function of this descriptor, so soul
+-- mapping stays deterministic and snapshot-testable.
 
 local oklch = require("osc-colors.oklch")
 local utils = require("osc-colors.utils")
 
 local M = {}
 
--- Below this OKLCH chroma, a color is visually gray. If *every* anchor is
--- under it, the scheme is achromatic: hue is meaningless and role mapping
--- degrades to pure lightness/chroma structure (a structured grayscale
--- scheme -- a feature, not an error state).
+-- Below this OKLCH chroma, a color is visually gray and can't anchor a
+-- hue family. If *no* family survives, the scheme is achromatic: role
+-- mapping degrades to pure lightness + style structure (a structured
+-- grayscale scheme -- a feature, not an error state).
 M.ACHROMATIC_CHROMA = 0.03
 
--- The ANSI hue anchors, in OSC 4 query order: red, green, yellow, blue,
--- magenta, cyan.
-local HUE_SLOTS = { "base08", "base0B", "base0A", "base0D", "base0E", "base0C" }
+-- A bright variant is a *shade* of its normal's family when it's the same
+-- hue (within SHADE_HUE_TIGHT), or a nearby hue (within SHADE_HUE) that is
+-- clearly a lightness step. Otherwise the designer gave it its own color
+-- (solarized's bright red is its orange at the same lightness, nord's
+-- bright cyan is a separate frost tone) and it becomes a family of its own.
+local SHADE_HUE_TIGHT = 8
+local SHADE_HUE = 25
+local SHADE_MIN_DL = 0.04
 
--- LuaJIT's math.atan takes a single argument (no atan2 form).
-local function atan2(y, x)
-    if x > 0 then
-        return math.atan(y / x)
-    elseif x < 0 and y >= 0 then
-        return math.atan(y / x) + math.pi
-    elseif x < 0 then
-        return math.atan(y / x) - math.pi
-    elseif y > 0 then
-        return math.pi / 2
-    elseif y < 0 then
-        return -math.pi / 2
-    end
-    return 0
+-- Families closer than this (OKLab distance) read as the same color; the
+-- less vivid one is folded into the other.
+local MERGE_DELTA_E = 0.05
+
+-- Salience blend. Vividness dominates (a designer's saturated colors are
+-- the ones they want seen); cohesion rewards colors near the scheme's
+-- other strong colors (the "family" the palette orbits); shift rewards
+-- hues deliberately moved off the stock ANSI positions.
+local SALIENCE_VIVID = 0.6
+local SALIENCE_COHESION = 0.25
+local SALIENCE_SHIFT = 0.15
+local COHESION_SPREAD = 40 -- degrees, gaussian width of the cohesion kernel
+local SHIFT_FULL = 60 -- degrees off-canon that count as a full shift
+
+-- The six ANSI hue families: base slot, base24 bright slot, tree fallback,
+-- and the stock color whose OKLCH hue is the family's "canonical" position.
+local FAMILY_DEFS = {
+    { name = "red", slot = "base08", bright_slot = "base12", tree = "palette.red.normal", stock = "#ff0000" },
+    { name = "green", slot = "base0B", bright_slot = "base14", tree = "palette.green.normal", stock = "#00ff00" },
+    { name = "yellow", slot = "base0A", bright_slot = "base13", tree = "palette.yellow.normal", stock = "#ffff00" },
+    { name = "blue", slot = "base0D", bright_slot = "base16", tree = "palette.blue.normal", stock = "#0000ff" },
+    { name = "magenta", slot = "base0E", bright_slot = "base17", tree = "palette.magenta.normal", stock = "#ff00ff" },
+    { name = "cyan", slot = "base0C", bright_slot = "base15", tree = "palette.cyan.normal", stock = "#00ffff" },
+}
+
+for _, def in ipairs(FAMILY_DEFS) do
+    def.canon = select(3, oklch.hex_to_oklch(def.stock))
 end
 
 local function hue_distance(a, b)
@@ -47,64 +68,160 @@ local function hue_distance(a, b)
     end
     return d
 end
+M.hue_distance = hue_distance
+
+local function color(hex)
+    if not utils.is_hex(hex) then
+        return nil
+    end
+    local L, C, H = oklch.hex_to_oklch(hex)
+    return { hex = hex, L = L, C = C, H = H }
+end
+
+local function new_family(name, base, def, order)
+    local rel = base.C / math.max(oklch.max_chroma(base.L, base.H), 1e-6)
+    return {
+        name = name,
+        aliases = { name },
+        hex = base.hex,
+        L = base.L,
+        C = base.C,
+        H = base.H,
+        rel = math.min(rel, 1),
+        canon = def.canon,
+        order = order,
+    }
+end
+
+-- Fold perceptually identical families together, keeping the more vivid
+-- one (ties: definition order). Deterministic: a single ordered pass.
+local function merge_families(families)
+    local kept = {}
+    for _, f in ipairs(families) do
+        local absorbed = false
+        for i, k in ipairs(kept) do
+            if oklch.delta_e(f.hex, k.hex) < MERGE_DELTA_E then
+                local survivor, loser = k, f
+                if f.rel > k.rel then
+                    survivor, loser = f, k
+                    survivor.order = loser.order
+                    kept[i] = survivor
+                end
+                for _, alias in ipairs(loser.aliases) do
+                    table.insert(survivor.aliases, alias)
+                end
+                survivor.shade = survivor.shade or loser.shade
+                absorbed = true
+                break
+            end
+        end
+        if not absorbed then
+            table.insert(kept, f)
+        end
+    end
+    return kept
+end
+
+local function score_salience(families)
+    local max_rel, max_cohesion = 1e-6, 1e-6
+    for _, f in ipairs(families) do
+        max_rel = math.max(max_rel, f.rel)
+    end
+    for _, f in ipairs(families) do
+        local cohesion = 0
+        for _, g in ipairs(families) do
+            if g ~= f then
+                cohesion = cohesion + g.rel * math.exp(-(hue_distance(f.H, g.H) / COHESION_SPREAD) ^ 2)
+            end
+        end
+        f.cohesion = cohesion
+        max_cohesion = math.max(max_cohesion, cohesion)
+    end
+    for _, f in ipairs(families) do
+        f.vivid = f.rel / max_rel
+        f.shift = math.min(hue_distance(f.H, f.canon) / SHIFT_FULL, 1)
+        f.salience = SALIENCE_VIVID * f.vivid
+            + SALIENCE_COHESION * (f.cohesion / max_cohesion)
+            + SALIENCE_SHIFT * f.shift
+    end
+end
 
 ---Extract the soul descriptor from a flat-or-normalized palette.
 ---@param palette osc-colors.Palette
----@return table soul
+---@return osc-colors.Soul soul
 function M.extract(palette)
     local anchors = {}
-    for _, slot in ipairs(HUE_SLOTS) do
-        local hex = palette[slot]
+    local families = {}
+    local brights = type(palette.brights) == "table" and palette.brights or {}
+
+    for _, def in ipairs(FAMILY_DEFS) do
+        local hex = palette[def.slot]
         if not utils.is_hex(hex) and palette.palette then
-            -- tree-only palettes: fall back through the canonical paths
-            local path = ({
-                base08 = "palette.red.normal",
-                base0B = "palette.green.normal",
-                base0A = "palette.yellow.normal",
-                base0D = "palette.blue.normal",
-                base0E = "palette.magenta.normal",
-                base0C = "palette.cyan.normal",
-            })[slot]
-            hex = path and utils.lookup(palette, path) or nil
+            hex = utils.lookup(palette, def.tree)
         end
-        if utils.is_hex(hex) then
-            local L, C, H = oklch.hex_to_oklch(hex)
-            table.insert(anchors, { hex = hex, L = L, C = C, H = H, slot = slot })
+        local normal = color(hex)
+        local bright = color(brights[def.name] or palette[def.bright_slot])
+        if bright and normal and bright.hex == normal.hex then
+            bright = nil
+        end
+
+        if normal then
+            table.insert(anchors, {
+                name = def.name,
+                slot = def.slot,
+                hex = normal.hex,
+                L = normal.L,
+                C = normal.C,
+                H = normal.H,
+            })
+        end
+
+        local fam = nil
+        if normal and normal.C >= M.ACHROMATIC_CHROMA then
+            fam = new_family(def.name, normal, def, #families + 1)
+            table.insert(families, fam)
+        end
+        if bright and bright.C >= M.ACHROMATIC_CHROMA then
+            local dh = fam and hue_distance(bright.H, fam.H)
+            local is_shade = fam
+                and (dh <= SHADE_HUE_TIGHT or (dh <= SHADE_HUE and math.abs(bright.L - fam.L) >= SHADE_MIN_DL))
+            if is_shade then
+                fam.shade = bright
+            elseif fam then
+                table.insert(families, new_family("bright_" .. def.name, bright, def, #families + 1))
+            else
+                -- the normal is gray but the bright carries the hue
+                table.insert(families, new_family(def.name, bright, def, #families + 1))
+            end
         end
     end
+
+    families = merge_families(families)
+    score_salience(families)
+
+    local ranked = {}
+    for _, f in ipairs(families) do
+        table.insert(ranked, f)
+    end
+    table.sort(ranked, function(a, b)
+        if a.salience ~= b.salience then
+            return a.salience > b.salience
+        end
+        return a.order < b.order
+    end)
+
+    local chromas = {}
+    for _, f in ipairs(families) do
+        table.insert(chromas, f.C)
+    end
+    table.sort(chromas)
 
     local bg = palette.base00 or (palette.ui and palette.ui.global.background.normal)
     local fg = palette.base07 or (palette.ui and palette.ui.global.foreground.normal)
     local bg_L = bg and select(1, oklch.hex_to_oklch(bg)) or 0
     local fg_L = fg and select(1, oklch.hex_to_oklch(fg)) or 1
 
-    -- Chroma-weighted circular hue statistics. A naive mean of hues on a
-    -- ring is nonsense (the mean of 350deg and 10deg is not 180deg), and
-    -- chroma weighting lets near-gray anchors stay out of the vote.
-    local sum_sin, sum_cos, sum_c = 0, 0, 0
-    local chromas = {}
-    for _, a in ipairs(anchors) do
-        local h = math.rad(a.H)
-        sum_sin = sum_sin + a.C * math.sin(h)
-        sum_cos = sum_cos + a.C * math.cos(h)
-        sum_c = sum_c + a.C
-        table.insert(chromas, a.C)
-    end
-
-    local hue_mean, hue_kappa = 0, 0
-    if sum_c > 1e-6 then
-        hue_mean = math.deg(atan2(sum_sin, sum_cos)) % 360
-        hue_kappa = math.sqrt(sum_sin ^ 2 + sum_cos ^ 2) / sum_c
-    end
-
-    table.sort(chromas)
-    local chroma_median = chromas[math.ceil(#chromas / 2)] or 0
-    local chroma_max = chromas[#chromas] or 0
-
-    -- Warm/cool bias: where the circular mass sits relative to the
-    -- warm pole (yellow-orange, ~60deg). +1 = warm scheme, -1 = cool.
-    local warm_bias = hue_kappa * math.cos(math.rad(hue_mean - 60))
-
+    local dominant = ranked[1]
     return {
         variant = palette.variant or (bg_L < fg_L and "dark" or "light"),
         bg = bg,
@@ -112,43 +229,99 @@ function M.extract(palette)
         bg_L = bg_L,
         fg_L = fg_L,
         anchors = anchors,
-        hue_mean = hue_mean,
-        hue_kappa = hue_kappa,
-        warm_bias = warm_bias,
-        chroma_median = chroma_median,
-        chroma_max = chroma_max,
-        achromatic = chroma_max < M.ACHROMATIC_CHROMA,
+        families = families,
+        ranked = ranked,
+        dominant = dominant,
+        dominant_hue = dominant and dominant.H or 0,
+        chroma_median = chromas[math.ceil(#chromas / 2)] or 0,
+        chroma_max = chromas[#chromas] or 0,
+        achromatic = #families == 0,
     }
 end
 
----Anchor (or synthesize) a hue inside a conventional sector, preferring the
----scheme's own accent when it already lives there.
----@param soul table from extract()
----@param slot string base slot of the preferred anchor (e.g. "base08" for error)
----@param sector number[] { lo, hi } degrees, inclusive
----@return number hue, number chroma of the preferred anchor (0 if none)
-function M.sector_hue(soul, slot, sector)
-    local pref_hue, pref_chroma = nil, 0
-    for _, a in ipairs(soul.anchors) do
-        if a.slot == slot then
-            pref_hue, pref_chroma = a.H, a.C
+---Find a family by name (its own name or any name folded into it).
+---@param soul osc-colors.Soul
+---@param name string
+---@return osc-colors.SoulFamily|nil
+function M.family(soul, name)
+    for _, f in ipairs(soul.families) do
+        for _, alias in ipairs(f.aliases) do
+            if alias == name then
+                return f
+            end
         end
     end
-    local lo, hi = sector[1], sector[2]
-    if pref_hue == nil then
-        -- no anchor to prefer: sit at the sector edge nearest the soul's
-        -- dominant hue, so even semantic colors lean "in family"
-        local mid = (lo + hi) / 2
-        return mid, 0
+    return nil
+end
+
+local function in_sector(h, sector)
+    return h >= sector[1] and h <= sector[2]
+end
+
+local function clamp_to_sector(h, sector)
+    if in_sector(h, sector) then
+        return h
     end
-    if pref_hue >= lo and pref_hue <= hi then
-        return pref_hue, pref_chroma
+    if hue_distance(h, sector[1]) < hue_distance(h, sector[2]) then
+        return sector[1]
     end
-    -- anchor is off-sector (theme labeled it oddly): clamp to nearest edge
-    if hue_distance(pref_hue, lo) < hue_distance(pref_hue, hi) then
-        return lo, pref_chroma
+    return sector[2]
+end
+
+local function sector_distance(h, sector)
+    if in_sector(h, sector) then
+        return 0
     end
-    return hi, pref_chroma
+    return math.min(hue_distance(h, sector[1]), hue_distance(h, sector[2]))
+end
+
+-- A source color this close (degrees) outside its sector is still "the
+-- scheme's red", just nudged in -- better than borrowing another family.
+local CLAMP_REACH = 30
+
+---Pick the scheme's own color for a semantic role constrained to a
+---conventional hue sector (errors stay red-ish whatever the soul). In
+---order of preference:
+---  1. the source family, when it already lives in the sector
+---  2. the source family clamped to the nearest sector edge, when it sits
+---     just outside (within CLAMP_REACH)
+---  3. the most salient family that lives in the sector (not yet `taken`)
+---  4. the source family, clamped
+---  5. the family nearest the sector, clamped
+---Lightness and chroma always come from the chosen family.
+---@param soul osc-colors.Soul
+---@param source string family name to prefer
+---@param sector number[] { lo, hi } degrees, inclusive
+---@param taken? table<osc-colors.SoulFamily, boolean> families already claimed by other semantics
+---@return { L: number, C: number, H: number, family: osc-colors.SoulFamily }|nil
+function M.sector_color(soul, source, sector, taken)
+    taken = taken or {}
+    local src = M.family(soul, source)
+    if src and in_sector(src.H, sector) then
+        return { L = src.L, C = src.C, H = src.H, family = src }
+    end
+    if src and sector_distance(src.H, sector) <= CLAMP_REACH then
+        return { L = src.L, C = src.C, H = clamp_to_sector(src.H, sector), family = src }
+    end
+    for _, f in ipairs(soul.ranked) do
+        if not taken[f] and in_sector(f.H, sector) then
+            return { L = f.L, C = f.C, H = f.H, family = f }
+        end
+    end
+    if src then
+        return { L = src.L, C = src.C, H = clamp_to_sector(src.H, sector), family = src }
+    end
+    local nearest, nearest_d = nil, math.huge
+    for _, f in ipairs(soul.ranked) do
+        local d = sector_distance(f.H, sector)
+        if d < nearest_d then
+            nearest, nearest_d = f, d
+        end
+    end
+    if nearest then
+        return { L = nearest.L, C = nearest.C, H = clamp_to_sector(nearest.H, sector), family = nearest }
+    end
+    return nil
 end
 
 return M

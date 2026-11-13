@@ -16,6 +16,7 @@ local diagnostics = require("osc-colors.highlights.diagnostics")
 local aliases = require("osc-colors.aliases")
 local utils = require("osc-colors.utils")
 local oklch = require("osc-colors.oklch")
+local roles = require("osc-colors.roles")
 
 -- Integrations (opt in)
 local integrations = {
@@ -153,6 +154,10 @@ function M.build(palette, cfg)
     merge(lsp.build(palette, palette_aliases, cfg))
     merge(diagnostics.build(palette, palette_aliases, cfg))
 
+    -- soul-mode italic/bold (no-op in base16 mode: no role_styles). Sits
+    -- before integrations/overrides, and never overrides attributes the
+    -- builders already set (e.g. from cfg.styles).
+    roles.style_highlights(result, palette.role_styles)
     -- integrations
     local enabled = cfg.highlights and cfg.highlights.integrations or {}
     for name, module_path in pairs(integrations) do

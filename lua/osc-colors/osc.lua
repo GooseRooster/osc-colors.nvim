@@ -19,6 +19,10 @@ local capability = require("osc-colors.capability")
 local CACHE_PATH = vim.fn.stdpath("cache") .. "/osc-colors-palette.lua"
 local ESC, ST = "\027", "\027\\"
 local ANSI_HUE_INDEX = { 1, 2, 3, 4, 5, 6 } -- red, green, yellow, blue, magenta, cyan
+-- Bright variants (ANSI 9-14). Optional enrichment: a round that times out
+-- with every base slot answered still succeeds, just without brights.
+local ANSI_BRIGHT_INDEX = { 9, 10, 11, 12, 13, 14 }
+local BRIGHT_NAMES = { [9] = "red", [10] = "green", [11] = "yellow", [12] = "blue", [13] = "magenta", [14] = "cyan" }
 local CUBE_FIRST, CUBE_LAST = 16, 255
 local DEFAULT_TIMEOUT_MS = 200
 
@@ -64,9 +68,11 @@ end
 
 -- : Cache [[[
 --
--- Schema v2 adds `version` and `capability` (the probed tier + evidence).
--- v1 files (flat base16, no version field) still load; they simply carry an
--- "unknown" tier until the next successful live query upgrades the cache.
+-- Schema v2 adds `version` and `capability` (the probed tier + evidence);
+-- v3 adds `brights` (ANSI 9-14, keyed by hue name). v1 files (flat base16,
+-- no version field) still load; they simply carry an "unknown" tier until
+-- the next successful live query upgrades the cache. v1/v2 files load
+-- without brights.
 
 -- Load the last successfully queried palette from disk, if any. Used both to
 -- paint instantly on startup (before the async query below resolves) and to
@@ -82,6 +88,9 @@ function M.load_cached()
     end
     if type(tbl.cube) ~= "table" then
         tbl.cube = nil
+    end
+    if type(tbl.brights) ~= "table" then
+        tbl.brights = nil
     end
     return tbl
 end
@@ -107,12 +116,22 @@ local BASE_KEYS = {
 
 local function write_cache(palette)
     local parts = { "return {\n" }
-    table.insert(parts, "  version = 2,\n")
+    table.insert(parts, "  version = 3,\n")
     table.insert(parts, string.format("  variant = %q,\n", palette.variant))
     for _, key in ipairs(BASE_KEYS) do
         table.insert(parts, string.format("  %s = %q,\n", key, palette[key]))
     end
     table.insert(parts, string.format("  capability = { tier = %q },\n", palette.capability.tier))
+    if palette.brights then
+        table.insert(parts, "  brights = {\n")
+        for _, idx in ipairs(ANSI_BRIGHT_INDEX) do
+            local name = BRIGHT_NAMES[idx]
+            if palette.brights[name] then
+                table.insert(parts, string.format("    %s = %q,\n", name, palette.brights[name]))
+            end
+        end
+        table.insert(parts, "  },\n")
+    end
     if palette.cube then
         table.insert(parts, "  cube = {\n")
         for i = CUBE_FIRST, CUBE_LAST do
@@ -149,6 +168,12 @@ local function base_equal(a, b)
     for i = 0, 15 do
         local key = string.format("base%02X", i)
         if a[key] ~= b[key] then
+            return false
+        end
+    end
+    local a_br, b_br = a.brights or {}, b.brights or {}
+    for _, name in pairs(BRIGHT_NAMES) do
+        if a_br[name] ~= b_br[name] then
             return false
         end
     end
@@ -332,6 +357,17 @@ local function synthesize(osc10, osc11, osc4, cap)
     -- This ratio is the most likely spot to want taste-adjusting once seen live.
     local base0F = lerp_rgb(base08, base00, 0.3)
 
+    -- Kept out of the base24 slots (base12-base17) on purpose: their mere
+    -- presence would switch colors.normalize into base24 mode and change
+    -- the classic `mapping = "base16"` output.
+    local brights = nil
+    for _, idx in ipairs(ANSI_BRIGHT_INDEX) do
+        if osc4[idx] then
+            brights = brights or {}
+            brights[BRIGHT_NAMES[idx]] = osc4[idx]
+        end
+    end
+
     return {
         variant = (luminance(base00) < 128) and "dark" or "light",
         base00 = base00,
@@ -350,6 +386,7 @@ local function synthesize(osc10, osc11, osc4, cap)
         base0D = base0D,
         base0E = base0E,
         base0F = base0F,
+        brights = brights,
         capability = cap,
     }
 end
@@ -367,8 +404,9 @@ end
 -- silent on DCS.
 --
 -- The round runs in two phases:
---   1. "palette": OSC 10/11 + ANSI 1-6, plus the XTGETTCAP probe. Completes
---      as soon as all replies arrive.
+--   1. "palette": OSC 10/11 + ANSI 1-6 and their brights 9-14, plus the
+--      XTGETTCAP probe. Completes as soon as all replies arrive; on timeout
+--      it still completes if every base slot (fg/bg + ANSI 1-6) answered.
 --   2. "cube" (lazy, optional): OSC 4 for indices 16-255 -- the terminal's
 --      *actual* 256-color cube, which generic RGB->256 converters can't
 --      know (terminals and themes routinely remap cube entries). Only runs
@@ -403,11 +441,23 @@ function M.refresh_async(on_result, opts)
     local phase = "palette"
     local palette = nil --[[@type osc-colors.Palette?]]
 
-    local function have_all()
+    local function have_base()
         if not (results.osc10 and results.osc11) then
             return false
         end
         for _, idx in ipairs(ANSI_HUE_INDEX) do
+            if not results.osc4[idx] then
+                return false
+            end
+        end
+        return true
+    end
+
+    local function have_all()
+        if not have_base() then
+            return false
+        end
+        for _, idx in ipairs(ANSI_BRIGHT_INDEX) do
             if not results.osc4[idx] then
                 return false
             end
@@ -581,6 +631,13 @@ function M.refresh_async(on_result, opts)
         timeout_ms,
         0,
         vim.schedule_wrap(function()
+            -- Brights are optional: a terminal that answered every base
+            -- slot but not ANSI 9-14 still yields a complete palette.
+            if phase == "palette" and have_base() then
+                dbg("round %d: palette-phase timeout with base slots complete -- continuing without brights", my_round)
+                on_palette_complete()
+                return
+            end
             finish(false)
         end)
     )
@@ -591,7 +648,10 @@ function M.refresh_async(on_result, opts)
     for _, idx in ipairs(ANSI_HUE_INDEX) do
         table.insert(batch, query_osc4(idx))
     end
-    dbg("round %d: sending XTGETTCAP probe + 8 OSC queries", my_round)
+    for _, idx in ipairs(ANSI_BRIGHT_INDEX) do
+        table.insert(batch, query_osc4(idx))
+    end
+    dbg("round %d: sending XTGETTCAP probe + 14 OSC queries", my_round)
     vim.api.nvim_ui_send(table.concat(batch))
 end
 

@@ -1,61 +1,26 @@
--- Golden snapshots: soul in -> role palette out. The generation algorithm
--- is pure math over the anchors, so these hex values are exactly
--- reproducible; any change here means the algorithm (or a role descriptor)
--- changed, deliberately or not. When tuning defaults, regenerate this table
--- and let the diff be the review of your taste adjustment.
+-- Golden snapshots: soul in -> role map out. The generation algorithm is
+-- pure math over the scheme's own colors, so these values are exactly
+-- reproducible; any change here means the algorithm (salience, the group
+-- search, a role descriptor, the style policy) changed, deliberately or
+-- not. When taste-tuning, regenerate this table and let the diff be the
+-- review of your adjustment.
 
 describe("roles golden values", function()
     local roles
+    local fx = dofile("tests/fixtures/schemes.lua")
 
     before_each(function()
         roles = require("osc-colors.roles")
     end)
 
     local cfg = {
-        soul = { semantic = "sector", contrast_target = 4.5, chroma_ceiling_scale = 1.0, roles = {} },
+        soul = { contrast_target = 4.5, styles = "auto", pin = {}, roles = {} },
     }
 
     local palettes = {
-        warm_dark = {
-            variant = "dark",
-            base00 = "#282828",
-            base01 = "#3c3836",
-            base02 = "#504945",
-            base03 = "#665c54",
-            base04 = "#bdae93",
-            base05 = "#d5c4a1",
-            base06 = "#ebdbb2",
-            base07 = "#fbf1c7",
-            base08 = "#fb4934",
-            base09 = "#fe8019",
-            base0A = "#fabd2f",
-            base0B = "#b8bb26",
-            base0C = "#8ec07c",
-            base0D = "#83a598",
-            base0E = "#d3869b",
-            base0F = "#d65d0e",
-            capability = { tier = "truecolor" },
-        },
-        cool_muted = {
-            variant = "dark",
-            base00 = "#2e3440",
-            base01 = "#3b4252",
-            base02 = "#434c5e",
-            base03 = "#4c566a",
-            base04 = "#d8dee9",
-            base05 = "#e5e9f0",
-            base06 = "#eceff4",
-            base07 = "#f2f4f8",
-            base08 = "#bf616a",
-            base09 = "#d08770",
-            base0A = "#ebcb8b",
-            base0B = "#a3be8c",
-            base0C = "#88c0d0",
-            base0D = "#81a1c1",
-            base0E = "#b48ead",
-            base0F = "#a3be8c",
-            capability = { tier = "truecolor" },
-        },
+        gruvbox = fx.to_palette(fx.schemes.gruvbox), -- warm, vivid
+        nord = fx.to_palette(fx.schemes.nord), -- cool, muted
+        github_light = fx.to_palette(fx.schemes.github_light), -- light background
         monochrome = {
             variant = "dark",
             base00 = "#111111",
@@ -79,118 +44,230 @@ describe("roles golden values", function()
     }
 
     local golden = {
-        warm_dark = {
-            error = "#ff88a5",
-            warning = "#e2a371",
-            success = "#a3bc40",
-            info = "#6eb8e7",
-            hint = "#47bab9",
-            deprecated = "#9d93d8",
-            diff_add = "#78c567",
-            diff_delete = "#ff876c",
-            diff_change = "#58bfd5",
-            keyword = "#ffa500",
-            type = "#c79aff",
-            import = "#deb100",
-            heading = "#ffae88",
-            ["function"] = "#ff9493",
-            constant = "#b4b700",
-            float = "#00cab6",
-            character = "#e885de",
-            escape = "#98a7ff",
-            string = "#00bbed",
-            regexp = "#5bb0ff",
-            flow = "#8bc843",
-            modifier = "#4ad176",
-            tag = "#00d29b",
-            namespace = "#f583bb",
-            link = "#00c5d3",
-            comment = "#a78f6e",
-            punctuation = "#9b8d7a",
-            punct_section = "#ac9b83",
-            variable = "#d7cdc0",
-            parameter = "#ccc2b5",
-            property = "#d1c7b9",
+        gruvbox = {
+            roles = {
+                error = "#fb5f50",
+                warning = "#d79832",
+                success = "#969728",
+                info = "#249da2",
+                hint = "#5e9f6d",
+                deprecated = "#bc7fb6",
+                diff_add = "#969728",
+                diff_delete = "#fb5f50",
+                diff_change = "#249da2",
+                keyword = "#ff5a4b",
+                flow = "#fb5364",
+                import = "#ff5353",
+                modifier = "#ed6c5e",
+                ["function"] = "#98971a",
+                type = "#d79921",
+                namespace = "#d9ae6a",
+                tag = "#df942c",
+                string = "#5d9da0",
+                regexp = "#5c99a5",
+                character = "#5b99a4",
+                constant = "#689d6a",
+                float = "#689d6a",
+                escape = "#d79921",
+                heading = "#fabd2f",
+                link = "#e0932f",
+                comment = "#92937c",
+                punctuation = "#929283",
+                punct_section = "#939481",
+                variable = "#bfbfb5",
+                parameter = "#b5b5ac",
+                property = "#b9b9ad",
+            },
+            styles = {
+                flow = { italic = true },
+                import = { italic = true },
+                modifier = { italic = true },
+                escape = { italic = true },
+                heading = { bold = true },
+            },
+            assignment = {
+                keyword = "red",
+                ["function"] = "green",
+                type = "yellow",
+                string = "blue",
+                constant = "cyan",
+                special = "yellow",
+            },
         },
-        cool_muted = {
-            error = "#f69ab6",
-            warning = "#e5ad72",
-            success = "#79c9a0",
-            info = "#6bc2e8",
-            hint = "#5ac2b2",
-            deprecated = "#9e9de2",
-            diff_add = "#93c688",
-            diff_delete = "#f69892",
-            diff_change = "#5cc8d3",
-            keyword = "#ffa98f",
-            type = "#9fb6ff",
-            import = "#f3ac76",
-            heading = "#ffb2ba",
-            ["function"] = "#efa3ca",
-            constant = "#d8ae6d",
-            float = "#8cc696",
-            character = "#bcaae9",
-            escape = "#85bce7",
-            string = "#6cc3bf",
-            regexp = "#6ebfd3",
-            flow = "#caba70",
-            modifier = "#b5c27a",
-            tag = "#a2c786",
-            namespace = "#cca5d9",
-            link = "#77c9ad",
-            comment = "#b7a097",
-            punctuation = "#ac9e99",
-            punct_section = "#b2a19b",
-            variable = "#dcd2ce",
-            parameter = "#d1c8c4",
-            property = "#d5ccc8",
+        nord = {
+            roles = {
+                error = "#de8189",
+                warning = "#f6c684",
+                success = "#9dc17d",
+                info = "#6aa2d9",
+                hint = "#5cc9cf",
+                deprecated = "#c68bc0",
+                diff_add = "#9dc17d",
+                diff_delete = "#de8189",
+                diff_change = "#6aa2d9",
+                keyword = "#88c0d0",
+                flow = "#8fcbd4",
+                import = "#99d4e0",
+                modifier = "#86b1be",
+                ["function"] = "#ebcb8b",
+                type = "#e17f87",
+                namespace = "#d38e92",
+                tag = "#df7f93",
+                string = "#81a1c1",
+                regexp = "#92a8cc",
+                character = "#8aa2c6",
+                constant = "#a3be8c",
+                float = "#a3be8c",
+                escape = "#ebcb8b",
+                heading = "#f8d898",
+                link = "#f3c78d",
+                comment = "#a69f93",
+                punctuation = "#a29e96",
+                punct_section = "#a39e94",
+                variable = "#c4c1bc",
+                parameter = "#bbb8b3",
+                property = "#bfbcb6",
+            },
+            styles = {
+                flow = { italic = true },
+                modifier = { italic = true },
+                namespace = { italic = true },
+                escape = { italic = true },
+                heading = { bold = true },
+            },
+            assignment = {
+                keyword = "cyan",
+                ["function"] = "yellow",
+                type = "red",
+                string = "blue",
+                constant = "green",
+                special = "yellow",
+            },
+        },
+        github_light = {
+            roles = {
+                error = "#cb2c33",
+                warning = "#4d2d00",
+                success = "#18622c",
+                info = "#0071c3",
+                hint = "#007d83",
+                deprecated = "#8153da",
+                diff_add = "#18622c",
+                diff_delete = "#cb2c33",
+                diff_change = "#0071c3",
+                keyword = "#4d2d00",
+                flow = "#3f2900",
+                import = "#603e00",
+                modifier = "#543a1b",
+                ["function"] = "#0969da",
+                type = "#1b7c83",
+                namespace = "#326a6e",
+                tag = "#1e7b89",
+                string = "#cf222e",
+                regexp = "#c20948",
+                character = "#d82d53",
+                constant = "#116329",
+                float = "#116329",
+                escape = "#8250df",
+                heading = "#8655d7",
+                link = "#9349d4",
+                comment = "#82705e",
+                punctuation = "#7f7367",
+                punct_section = "#7e6f60",
+                variable = "#49433c",
+                parameter = "#534d46",
+                property = "#514840",
+            },
+            styles = {
+                flow = { italic = true },
+                modifier = { italic = true },
+                heading = { bold = true },
+            },
+            assignment = {
+                keyword = "yellow",
+                ["function"] = "blue",
+                type = "cyan",
+                string = "red",
+                constant = "green",
+                special = "magenta",
+            },
         },
         monochrome = {
-            error = "#d48576",
-            warning = "#cb8e5c",
-            success = "#9c9e52",
-            info = "#39abb3",
-            hint = "#53a37b",
-            deprecated = "#9f74b0",
-            diff_add = "#7ca768",
-            diff_delete = "#cd7e92",
-            diff_change = "#45a6c5",
-            keyword = "#9aaaa5",
-            type = "#a89a93",
-            import = "#94a6a5",
-            heading = "#a7b3a8",
-            ["function"] = "#9fa496",
-            constant = "#8b9ca0",
-            float = "#9797a5",
-            character = "#a1978c",
-            escape = "#a59494",
-            string = "#9b909b",
-            regexp = "#9f9096",
-            flow = "#92a0a8",
-            modifier = "#959eaa",
-            tag = "#989daa",
-            namespace = "#9d998b",
-            link = "#9c96a3",
-            comment = "#7c7c7c",
-            punctuation = "#838383",
-            punct_section = "#878787",
-            variable = "#bababa",
-            parameter = "#afafaf",
-            property = "#b3b3b3",
+            roles = {
+                error = "#d48383",
+                warning = "#cb8e5b",
+                success = "#7ea767",
+                info = "#44a7c3",
+                hint = "#3fa48c",
+                deprecated = "#9577b8",
+                diff_add = "#7ea767",
+                diff_delete = "#d48383",
+                diff_change = "#44a7c3",
+                keyword = "#d1d1d1",
+                flow = "#dbdbdb",
+                import = "#e5e5e5",
+                modifier = "#c4c4c4",
+                ["function"] = "#c1c1c1",
+                type = "#b3b3b3",
+                namespace = "#c3c3c3",
+                tag = "#b3b3b3",
+                string = "#a1a1a1",
+                regexp = "#ababab",
+                character = "#989898",
+                constant = "#949494",
+                float = "#949494",
+                escape = "#878787",
+                heading = "#939393",
+                link = "#878787",
+                comment = "#808080",
+                punctuation = "#7e7e7e",
+                punct_section = "#878787",
+                variable = "#bababa",
+                parameter = "#afafaf",
+                property = "#b3b3b3",
+            },
+            styles = {
+                keyword = { italic = true },
+                flow = { italic = true },
+                import = { italic = true },
+                modifier = { italic = true },
+                ["function"] = { bold = true },
+                type = { bold = true },
+                namespace = { italic = true },
+                string = { italic = true },
+                constant = { bold = true },
+                escape = { italic = true },
+                heading = { bold = true },
+                parameter = { italic = true },
+            },
+            assignment = {},
         },
     }
 
     for soul_name, expected in pairs(golden) do
         describe(soul_name, function()
+            local gen
+
+            before_each(function()
+                gen = roles.generate(palettes[soul_name], cfg)
+            end)
+
             it("matches the pinned role palette", function()
-                local gen = roles.generate(palettes[soul_name], cfg)
-                for role, hex in pairs(expected) do
+                for role, hex in pairs(expected.roles) do
                     assert.equal(
                         hex,
                         gen.roles[role],
                         string.format("%s/%s drifted from its golden value", soul_name, role)
                     )
                 end
+            end)
+
+            it("matches the pinned styles", function()
+                assert.same(expected.styles, gen.styles)
+            end)
+
+            it("matches the pinned group assignment", function()
+                assert.same(expected.assignment, gen.assignment)
             end)
         end)
     end

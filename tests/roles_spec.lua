@@ -2,54 +2,17 @@ describe("roles", function()
     local roles
     local oklch
     local utils
+    local soulmod
+    local fx = dofile("tests/fixtures/schemes.lua")
 
     local cfg = {
         capabilities = { undercurl = false, terminal_colors = true },
-        soul = { semantic = "sector", contrast_target = 4.5, chroma_ceiling_scale = 1.0, roles = {} },
+        soul = { contrast_target = 4.5, styles = "auto", pin = {}, roles = {} },
     }
 
-    -- Representative souls for golden-ish assertions
-    local warm_dark = {
-        variant = "dark",
-        base00 = "#282828",
-        base01 = "#3c3836",
-        base02 = "#504945",
-        base03 = "#665c54",
-        base04 = "#bdae93",
-        base05 = "#d5c4a1",
-        base06 = "#ebdbb2",
-        base07 = "#fbf1c7",
-        base08 = "#fb4934",
-        base09 = "#fe8019",
-        base0A = "#fabd2f",
-        base0B = "#b8bb26",
-        base0C = "#8ec07c",
-        base0D = "#83a598",
-        base0E = "#d3869b",
-        base0F = "#d65d0e",
-        capability = { tier = "truecolor" },
-    }
-
-    local cool_muted = {
-        variant = "dark",
-        base00 = "#2e3440",
-        base01 = "#3b4252",
-        base02 = "#434c5e",
-        base03 = "#4c566a",
-        base04 = "#d8dee9",
-        base05 = "#e5e9f0",
-        base06 = "#eceff4",
-        base07 = "#f2f4f8",
-        base08 = "#bf616a",
-        base09 = "#d08770",
-        base0A = "#ebcb8b",
-        base0B = "#a3be8c",
-        base0C = "#88c0d0",
-        base0D = "#81a1c1",
-        base0E = "#b48ead",
-        base0F = "#a3be8c",
-        capability = { tier = "truecolor" },
-    }
+    local function scheme(name, opts)
+        return fx.to_palette(fx.schemes[name], opts)
+    end
 
     local monochrome = {
         variant = "dark",
@@ -72,162 +35,181 @@ describe("roles", function()
         capability = { tier = "truecolor" },
     }
 
+    local function hue_of(hex)
+        return select(3, oklch.hex_to_oklch(hex))
+    end
+
+    local function with_soul(overrides)
+        local c = vim.deepcopy(cfg)
+        c.soul = vim.tbl_extend("force", c.soul, overrides)
+        return c
+    end
+
     before_each(function()
         roles = require("osc-colors.roles")
         oklch = require("osc-colors.oklch")
         utils = require("osc-colors.utils")
+        soulmod = require("osc-colors.soul")
     end)
 
     describe("generate", function()
         it("produces a hex color for every role", function()
-            local gen = roles.generate(warm_dark, cfg)
-            local names = {
-                "error",
-                "warning",
-                "success",
-                "info",
-                "hint",
-                "deprecated",
-                "diff_add",
-                "diff_delete",
-                "diff_change",
-                "keyword",
-                "type",
-                "import",
-                "heading",
-                "function",
-                "constant",
-                "float",
-                "character",
-                "escape",
-                "string",
-                "regexp",
-                "flow",
-                "modifier",
-                "tag",
-                "namespace",
-                "link",
-                "comment",
-                "punctuation",
-                "punct_section",
-                "variable",
-                "parameter",
-                "property",
-            }
-            for _, name in ipairs(names) do
+            local gen = roles.generate(scheme("gruvbox"), cfg)
+            for _, name in ipairs(roles.ROLE_ORDER) do
                 assert.is_true(utils.is_hex(gen.roles[name]), name .. " should resolve to a hex color")
             end
         end)
 
-        it("is deterministic for the same input", function()
-            local a = roles.generate(warm_dark, cfg)
-            local b = roles.generate(warm_dark, cfg)
-            for name, hex in pairs(a.roles) do
-                assert.equal(hex, b.roles[name], name .. " should be deterministic")
+        it("assigns every role group to one of the scheme's families", function()
+            local gen = roles.generate(scheme("gruvbox"), cfg)
+            for _, group in ipairs(roles.GROUPS) do
+                assert.is_table(soulmod.family(gen.soul, gen.assignment[group.name]), group.name)
             end
         end)
 
-        it("anchors errors in the red sector and warnings in the yellow sector", function()
-            local gen = roles.generate(warm_dark, cfg)
-            local _, _, err_hue = oklch.hex_to_oklch(gen.roles.error)
-            local _, _, warn_hue = oklch.hex_to_oklch(gen.roles.warning)
-            assert.is_true(err_hue <= 40 or err_hue >= 350, "error hue should be red-sector, got " .. err_hue)
-            assert.is_true(warn_hue >= 40 and warn_hue <= 80, "warning hue should be yellow-sector, got " .. warn_hue)
+        it("is deterministic for the same input", function()
+            local a = roles.generate(scheme("tokyonight"), cfg)
+            local b = roles.generate(scheme("tokyonight"), cfg)
+            assert.same(a.roles, b.roles)
+            assert.same(a.styles, b.styles)
+            assert.same(a.assignment, b.assignment)
         end)
 
-        it("keeps syntax role hues separated (the harmony trap)", function()
-            local gen = roles.generate(warm_dark, cfg)
-            local syntax_roles = {
-                "keyword",
-                "type",
-                "import",
-                "heading",
-                "function",
-                "constant",
-                "float",
-                "character",
-                "escape",
-                "string",
-                "regexp",
-                "flow",
-                "modifier",
-                "tag",
-                "namespace",
-                "link",
-            }
-            for i = 1, #syntax_roles do
-                for j = i + 1, #syntax_roles do
-                    local a = select(3, oklch.hex_to_oklch(gen.roles[syntax_roles[i]]))
-                    local b = select(3, oklch.hex_to_oklch(gen.roles[syntax_roles[j]]))
-                    local d = math.abs(a - b) % 360
-                    if d > 180 then
-                        d = 360 - d
-                    end
+        it("builds lead roles from the scheme's own colors", function()
+            -- a lead's hue is its family's hue (contrast lifts only move L)
+            for _, name in ipairs(fx.names()) do
+                local gen = roles.generate(scheme(name), cfg)
+                for _, group in ipairs(roles.GROUPS) do
+                    local fam = soulmod.family(gen.soul, gen.assignment[group.name])
+                    local d = soulmod.hue_distance(hue_of(gen.roles[group.lead]), fam.H)
                     assert.is_true(
-                        d >= 15,
-                        string.format("%s (%.0f) and %s (%.0f) are too close", syntax_roles[i], a, syntax_roles[j], b)
+                        d < 8,
+                        string.format("%s/%s drifted %.1fdeg from its family %s", name, group.lead, d, fam.name)
                     )
                 end
             end
         end)
 
+        it("gives different schemes genuinely different role maps", function()
+            -- the whole point: no family may own a role across most schemes
+            local names = fx.names()
+            for _, group in ipairs({ "keyword", "function", "type", "string" }) do
+                local tally = {}
+                for _, name in ipairs(names) do
+                    local fam = roles.generate(scheme(name), cfg).assignment[group]
+                    local base = fam:gsub("^bright_", "")
+                    tally[base] = (tally[base] or 0) + 1
+                end
+                for fam, count in pairs(tally) do
+                    assert.is_true(
+                        count <= #names / 2,
+                        string.format("%s lands on %s in %d of %d schemes", group, fam, count, #names)
+                    )
+                end
+                assert.is_true(vim.tbl_count(tally) >= 4, group .. " should spread over at least 4 families")
+            end
+        end)
+
+        it("puts the most prominent groups on salient families", function()
+            -- gruvbox's muted blue/magenta must not carry keywords or functions
+            local gen = roles.generate(scheme("gruvbox"), cfg)
+            for _, group in ipairs({ "keyword", "function" }) do
+                local fam = gen.assignment[group]
+                assert.is_true(fam ~= "blue" and fam ~= "magenta", group .. " landed on muted " .. fam)
+            end
+        end)
+
+        it("separates the groups that sit side by side", function()
+            for _, name in ipairs(fx.names()) do
+                local a = roles.generate(scheme(name), cfg).assignment
+                assert.are_not.equal(a.keyword, a["function"], name .. ": keyword and function share a family")
+                assert.are_not.equal(a.keyword, a.type, name .. ": keyword and type share a family")
+            end
+        end)
+
+        it("anchors semantic roles in their conventional sectors", function()
+            local sectors = {
+                error = { 0, 40 },
+                warning = { 45, 75 },
+                success = { 110, 160 },
+                info = { 190, 250 },
+                hint = { 150, 200 },
+                deprecated = { 280, 330 },
+            }
+            for _, name in ipairs(fx.names()) do
+                local gen = roles.generate(scheme(name), cfg)
+                for role, sector in pairs(sectors) do
+                    local h = hue_of(gen.roles[role])
+                    local d = h >= sector[1] and h <= sector[2] and 0
+                        or math.min(soulmod.hue_distance(h, sector[1]), soulmod.hue_distance(h, sector[2]))
+                    assert.is_true(d < 6, string.format("%s/%s hue %.0f outside its sector", name, role, h))
+                end
+                assert.equal(gen.roles.error, gen.roles.diff_delete)
+                assert.equal(gen.roles.success, gen.roles.diff_add)
+                assert.equal(gen.roles.info, gen.roles.diff_change)
+            end
+        end)
+
+        it("uses the scheme's own red for errors", function()
+            local gen = roles.generate(scheme("gruvbox"), cfg)
+            local red = soulmod.family(gen.soul, "red")
+            assert.is_true(soulmod.hue_distance(hue_of(gen.roles.error), red.H) < 3)
+        end)
+
+        it("keeps info and hint apart even when one family could serve both", function()
+            for _, name in ipairs(fx.names()) do
+                local gen = roles.generate(scheme(name), cfg)
+                assert.are_not.equal(gen.roles.info, gen.roles.hint, name)
+            end
+        end)
+
         it("honors the contrast target for text roles", function()
-            local gen = roles.generate(cool_muted, cfg)
-            for _, name in ipairs({ "keyword", "string", "comment", "error" }) do
-                local c = oklch.contrast(gen.roles[name], cool_muted.base00)
-                assert.is_true(c >= 4.0, name .. " contrast " .. c .. " should be near target")
+            for _, name in ipairs(fx.names()) do
+                local p = scheme(name)
+                local gen = roles.generate(p, cfg)
+                for _, role in ipairs({ "keyword", "string", "type", "comment", "error", "variable" }) do
+                    local c = oklch.contrast(gen.roles[role], p.base00)
+                    assert.is_true(c >= 4.4, string.format("%s/%s contrast %.2f", name, role, c))
+                end
+            end
+        end)
+
+        it("works on light schemes", function()
+            local p = scheme("github_light")
+            local gen = roles.generate(p, cfg)
+            local bg_L = select(1, oklch.hex_to_oklch(p.base00))
+            for _, role in ipairs({ "keyword", "function", "type", "string" }) do
+                assert.is_true(select(1, oklch.hex_to_oklch(gen.roles[role])) < bg_L - 0.2, role)
             end
         end)
 
         it("degrades achromatic souls to lightness structure", function()
             local gen = roles.generate(monochrome, cfg)
-            -- syntax roles should be visually gray: near-zero chroma
-            local syntax_names = {
-                "keyword",
-                "type",
-                "import",
-                "heading",
-                "function",
-                "constant",
-                "float",
-                "character",
-                "escape",
-                "string",
-                "regexp",
-                "flow",
-                "modifier",
-                "tag",
-                "namespace",
-                "link",
-                "comment",
-            }
-            for _, name in ipairs(syntax_names) do
-                local _, C = oklch.hex_to_oklch(gen.roles[name])
-                assert.is_true(C < 0.04, name .. " should be near-achromatic, chroma " .. C)
+            for _, name in ipairs(roles.ROLE_ORDER) do
+                local r_is_semantic = name == "error"
+                    or name == "warning"
+                    or name == "success"
+                    or name == "info"
+                    or name == "hint"
+                    or name == "deprecated"
+                    or name:match("^diff_")
+                if not r_is_semantic then
+                    local _, C = oklch.hex_to_oklch(gen.roles[name])
+                    assert.is_true(C < 0.02, name .. " should be achromatic, chroma " .. C)
+                end
             end
-            -- semantic roles deliberately keep a chroma floor so errors
-            -- still read as errors even in a grayscale soul
+            -- semantic roles keep a chroma floor so errors still read as errors
             assert.is_true(select(2, oklch.hex_to_oklch(gen.roles.error)) >= 0.09)
-            -- and syntax roles still differentiate by lightness
             local kw_L = select(1, oklch.hex_to_oklch(gen.roles.keyword))
             local cm_L = select(1, oklch.hex_to_oklch(gen.roles.comment))
             assert.is_true(kw_L > cm_L, "keyword should out-pop comment even in grayscale")
         end)
 
-        it("produces different palettes for different souls from the same algorithm", function()
-            local warm = roles.generate(warm_dark, cfg)
-            local cool = roles.generate(cool_muted, cfg)
-            assert.are_not.equal(warm.roles.keyword, cool.roles.keyword)
-            assert.are_not.equal(warm.roles.string, cool.roles.string)
-        end)
-
         it("snaps to the terminal's real cube on the 256 tier", function()
-            local palette = vim.deepcopy(warm_dark)
-            palette.capability = { tier = "256" }
+            local palette = scheme("gruvbox", { tier = "256" })
             palette.cube = { [16] = "#ff5f00", [244] = "#808080" }
             local gen = roles.generate(palette, cfg)
             assert.is_function(gen.snap)
-            -- every role color must be one of the real cube entries
             for name, hex in pairs(gen.roles) do
                 assert.is_true(
                     hex == "#ff5f00" or hex == "#808080",
@@ -237,14 +219,11 @@ describe("roles", function()
         end)
 
         it("falls back to the nominal cube on the 256 tier without a queried cube", function()
-            local palette = vim.deepcopy(warm_dark)
-            palette.capability = { tier = "256" }
-            palette.cube = nil
+            local palette = scheme("gruvbox", { tier = "256" })
             local gen = roles.generate(palette, cfg)
             assert.is_function(gen.snap)
-            local nominal = utils.nominal_cube()
             local values = {}
-            for _, hex in pairs(nominal) do
+            for _, hex in pairs(utils.nominal_cube()) do
                 values[hex] = true
             end
             for name, hex in pairs(gen.roles) do
@@ -252,21 +231,102 @@ describe("roles", function()
             end
         end)
 
-        it("applies per-role config overrides", function()
-            local custom = vim.deepcopy(cfg)
-            custom.soul.roles = { keyword = { offset = 200, weight = 0.9 } }
-            local base = roles.generate(warm_dark, cfg)
-            local over = roles.generate(warm_dark, custom)
+        it("applies per-role tweaks", function()
+            local base = roles.generate(scheme("gruvbox"), cfg)
+            local over = roles.generate(scheme("gruvbox"), with_soul({ roles = { keyword = { chroma = 0.4 } } }))
             assert.are_not.equal(base.roles.keyword, over.roles.keyword)
+            assert.equal(base.roles.string, over.roles.string)
         end)
 
-        it("supports the experimental fully-derived semantic policy", function()
-            local custom = vim.deepcopy(cfg)
-            custom.soul.semantic = "derived"
-            local sector = roles.generate(warm_dark, cfg)
-            local derived = roles.generate(warm_dark, custom)
-            -- derived errors are rotated away from the conventional sector
-            assert.are_not.equal(sector.roles.error, derived.roles.error)
+        it("honors pinned groups", function()
+            local gen = roles.generate(scheme("gruvbox"), with_soul({ pin = { string = "green" } }))
+            assert.equal("green", gen.assignment.string)
+        end)
+
+        it("ignores a pin naming a family the scheme doesn't have", function()
+            local base = roles.generate(scheme("gruvbox"), cfg)
+            local gen = roles.generate(scheme("gruvbox"), with_soul({ pin = { string = "bright_cyan" } }))
+            assert.equal(base.assignment.string, gen.assignment.string)
+        end)
+
+        it("uses the bright shade for shade roles when it differs", function()
+            local gen = roles.generate(scheme("dracula"), cfg)
+            local fam = soulmod.family(gen.soul, gen.assignment.keyword)
+            assert.are_not.equal(gen.roles.keyword, gen.roles.import)
+            assert.is_true(
+                oklch.delta_e(gen.roles.import, fam.shade.hex) < oklch.delta_e(gen.roles.import, fam.hex),
+                "import should sit on the keyword family's bright shade"
+            )
+        end)
+    end)
+
+    describe("styles", function()
+        it("always bolds headings", function()
+            local gen = roles.generate(scheme("dracula"), cfg)
+            assert.same({ bold = true }, gen.styles.heading)
+        end)
+
+        it("styles a group lead that shares its family with a more prominent group", function()
+            -- find a scheme where special reuses another group's family
+            for _, name in ipairs(fx.names()) do
+                local gen = roles.generate(scheme(name), cfg)
+                for _, group in ipairs(roles.GROUPS) do
+                    if group.name ~= "special" and gen.assignment[group.name] == gen.assignment.special then
+                        assert.is_table(gen.styles.escape, name .. ": shared special lead should be styled")
+                    end
+                end
+            end
+        end)
+
+        it("leaves well-separated group leads unstyled", function()
+            local gen = roles.generate(scheme("dracula"), cfg)
+            assert.is_nil(gen.styles.keyword)
+            assert.is_nil(gen.styles["function"])
+            assert.is_nil(gen.styles.type)
+        end)
+
+        it("styles everything an achromatic soul can't color apart", function()
+            local gen = roles.generate(monochrome, cfg)
+            for _, role in ipairs({ "function", "type", "string", "flow", "modifier", "parameter" }) do
+                assert.is_table(gen.styles[role], role)
+            end
+        end)
+
+        it("applies every candidate with styles = 'always'", function()
+            local gen = roles.generate(scheme("dracula"), with_soul({ styles = "always" }))
+            for _, role in ipairs({ "function", "type", "flow", "import", "modifier", "namespace", "parameter" }) do
+                assert.is_table(gen.styles[role], role)
+            end
+        end)
+
+        it("disables soul styles with styles = false", function()
+            local gen = roles.generate(monochrome, with_soul({ styles = false }))
+            assert.same({}, gen.styles)
+        end)
+
+        it("lets a per-role style override win", function()
+            local gen = roles.generate(
+                scheme("dracula"),
+                with_soul({ roles = { heading = { style = false }, keyword = { style = { underline = true } } } })
+            )
+            assert.is_nil(gen.styles.heading)
+            assert.same({ underline = true }, gen.styles.keyword)
+        end)
+
+        it("merges role styles into highlight groups without overriding existing attributes", function()
+            local hl = {
+                Keyword = { fg = "#ffffff", italic = false },
+                ["@markup.heading"] = { fg = "#ffffff" },
+                Type = { link = "Normal" },
+            }
+            roles.style_highlights(hl, {
+                keyword = { italic = true },
+                heading = { bold = true },
+                type = { bold = true },
+            })
+            assert.is_false(hl.Keyword.italic)
+            assert.is_true(hl["@markup.heading"].bold)
+            assert.is_nil(hl.Type.bold)
         end)
     end)
 
@@ -281,22 +341,41 @@ describe("roles", function()
             return colors.normalize(vim.deepcopy(palette))
         end
 
-        it("rewrites the syntax tree and adds semantics", function()
-            local p = normalized(warm_dark)
+        it("rewrites the syntax tree and adds semantics + styles", function()
+            local p = normalized(scheme("gruvbox"))
             roles.apply(p, cfg)
 
             assert.is_true(utils.is_hex(p.syntax.keyword.default))
             assert.is_true(utils.is_hex(p.semantics.error))
             assert.equal(p.semantics.error, p.ui.status.error)
             assert.equal(p.semantics.diff.add, p.syntax.markup.inserted)
+            assert.is_table(p.role_styles)
+            assert.same({ bold = true }, p.role_styles.heading)
         end)
 
-        it("leans the gray ramp toward the soul's dominant hue", function()
-            local p = normalized(warm_dark)
+        it("writes every role into the tree, including bracketed paths", function()
+            local raw = scheme("rosepine")
+            local gen = roles.generate(raw, cfg)
+            local p = normalized(raw)
+            roles.apply(p, cfg)
+            local sx = p.syntax
+            assert.equal(gen.roles["function"], sx.entity.name["function"].default)
+            assert.equal(gen.roles["function"], sx.entity.name["function"].constructor)
+            assert.equal(gen.roles.modifier, sx.entity.other["attribute-name"])
+            assert.equal(gen.roles.keyword, sx.keyword.default)
+            assert.equal(gen.roles.type, sx.entity.name.type)
+            assert.equal(gen.roles.string, sx.string.default)
+            assert.equal(gen.roles.constant, sx.constant.default)
+            assert.equal(gen.roles.escape, sx.constant.character.escape)
+            assert.equal(gen.roles.parameter, sx.variable.parameter)
+            assert.are_not.equal(raw.base0D, sx.entity.name["function"].default)
+        end)
+
+        it("leans the gray ramp toward the dominant family's hue", function()
+            local p = normalized(scheme("gruvbox"))
             local before = p.base03
             roles.apply(p, cfg)
             assert.are_not.equal(before, p.base03)
-            -- and the tree stays consistent with the slots
             assert.equal(p.base03, p.palette.gray.normal)
         end)
 
@@ -308,7 +387,7 @@ describe("roles", function()
         end)
 
         it("is idempotent (no double-lean)", function()
-            local p = normalized(warm_dark)
+            local p = normalized(scheme("gruvbox"))
             roles.apply(p, cfg)
             local once = p.base03
             roles.apply(p, cfg)
@@ -316,16 +395,16 @@ describe("roles", function()
         end)
 
         it("survives a re-normalize without losing soul values", function()
-            local p = normalized(warm_dark)
+            local p = normalized(scheme("gruvbox"))
             roles.apply(p, cfg)
-            local soul_keyword = p.syntax.keyword.default
             local p2 = colors.normalize(p)
-            assert.equal(soul_keyword, p2.syntax.keyword.default)
+            assert.equal(p.syntax.keyword.default, p2.syntax.keyword.default)
             assert.equal(p.semantics.error, p2.semantics.error)
+            assert.same(p.role_styles, p2.role_styles)
         end)
 
         it("marks the palette so a second pass is a no-op even after normalize", function()
-            local p = normalized(warm_dark)
+            local p = normalized(scheme("gruvbox"))
             roles.apply(p, cfg)
             local leaned = p.base03
             local p2 = colors.normalize(p)
@@ -334,11 +413,18 @@ describe("roles", function()
         end)
 
         it("keeps base16 mode colors when apply is never called", function()
-            local colors_mod = require("osc-colors.colors")
-            local q = colors_mod.normalize(vim.deepcopy(warm_dark))
-            -- keyword = base0E in base16 statics
-            assert.equal(q.syntax.keyword.default, warm_dark.base0E)
-            assert.equal(q.semantics.error, warm_dark.base08)
+            local raw = scheme("gruvbox")
+            local q = colors.normalize(vim.deepcopy(raw))
+            assert.equal(q.syntax.keyword.default, raw.base0E)
+            assert.equal(q.semantics.error, raw.base08)
+            assert.is_nil(q.role_styles)
+        end)
+
+        it("does not switch base16 mode into base24 when brights are present", function()
+            local raw = scheme("dracula")
+            local q = colors.normalize(vim.deepcopy(raw))
+            assert.is_nil(q.base12)
+            assert.equal(raw.base08, q.palette.red.bright)
         end)
     end)
 end)

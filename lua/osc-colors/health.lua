@@ -23,24 +23,27 @@ function M.check()
     local cfg = config.options or config.defaults
     local mapping = cfg.mapping or "soul"
     if mapping == "soul" then
-        vim.health.ok('mapping: soul (role-based colors via OKLCH; set `mapping = "base16"` for classic slot mapping)')
+        vim.health.ok(
+            'mapping: soul (roles assigned to the scheme\'s own colors; set `mapping = "base16"` for classic)'
+        )
         if palette then
-            local soul = require("osc-colors.soul").extract(palette)
+            local gen = require("osc-colors.roles").generate(palette, cfg)
+            local soul = gen.soul
             if soul.achromatic then
                 vim.health.info(
-                    "soul: achromatic -- roles degrade to lightness structure with conventional semantic accents"
+                    "soul: achromatic -- roles stratify by lightness and italic/bold; semantics keep their accents"
                 )
             else
-                vim.health.info(
-                    string.format(
-                        "soul: dominant hue %.0fdeg, concentration %.2f, warm bias %.2f, chroma envelope %.3f-%.3f",
-                        soul.hue_mean,
-                        soul.hue_kappa,
-                        soul.warm_bias,
-                        soul.chroma_median,
-                        soul.chroma_max
-                    )
-                )
+                local fams = {}
+                for _, f in ipairs(soul.ranked) do
+                    table.insert(fams, string.format("%s %s (%.2f)", f.name, f.hex, f.salience))
+                end
+                vim.health.info("soul families by salience: " .. table.concat(fams, ", "))
+                local groups = {}
+                for _, g in ipairs(require("osc-colors.roles").GROUPS) do
+                    table.insert(groups, string.format("%s -> %s", g.name, gen.assignment[g.name] or "?"))
+                end
+                vim.health.info("soul role groups: " .. table.concat(groups, ", "))
             end
         end
     else

@@ -168,7 +168,8 @@ osc-colors.Config.Capabilities                  *osc-colors.Config.Capabilities*
 osc-colors.Config.Soul                                  *osc-colors.Config.Soul*
 
     Fields: ~
-        {semantic}  ()
+        {contrast_target}  (number)  Minimum WCAG contrast for text roles against the background. Default: 4.5
+        {styles}           ()
 
 
 osc-colors.Config.Ui                                      *osc-colors.Config.Ui*

@@ -11,8 +11,15 @@ describe("osc", function()
         vim.api.nvim_exec_autocmds("TermResponse", { data = { sequence = sequence } })
     end
 
+    local function fire_brights()
+        for idx = 9, 14 do
+            fire(string.format("\027]4;%d;rgb:8080/8080/8080\027\\", idx))
+        end
+    end
+
     -- A full round of replies: bg, fg, then the six ANSI hue queries
-    -- osc-colors sends (red, green, yellow, blue, magenta, cyan).
+    -- osc-colors sends (red, green, yellow, blue, magenta, cyan) and their
+    -- brights (ANSI 9-14). `brights = false` leaves the brights unanswered.
     local function fire_full_round(overrides)
         overrides = overrides or {}
         fire("\027]11;rgb:" .. (overrides.bg or "1a1a/1a1a/1a1a") .. "\027\\")
@@ -28,6 +35,20 @@ describe("osc", function()
             }
         for _, seq in ipairs(hues) do
             fire(seq)
+        end
+        if overrides.brights ~= false then
+            local brights = overrides.brights
+                or {
+                    "\027]4;9;rgb:ff00/5500/5500\027\\",
+                    "\027]4;10;rgb:5500/ff00/5500\027\\",
+                    "\027]4;11;rgb:ffff/ff00/5500\027\\",
+                    "\027]4;12;rgb:5500/5500/ff00\027\\",
+                    "\027]4;13;rgb:ff00/5500/ff00\027\\",
+                    "\027]4;14;rgb:5500/ffff/ff00\027\\",
+                }
+            for _, seq in ipairs(brights) do
+                fire(seq)
+            end
         end
     end
 
@@ -210,6 +231,7 @@ describe("osc", function()
             }) do
                 fire(seq)
             end
+            fire_brights()
             vim.wait(200, function()
                 return done
             end)
@@ -233,6 +255,7 @@ describe("osc", function()
             fire("\027]4;4;#0000ff\027\\")
             fire("\027]4;5;#ff00ff\027\\")
             fire("\027]4;6;#00ffff\027\\")
+            fire_brights()
             vim.wait(200, function()
                 return done
             end)
@@ -257,6 +280,7 @@ describe("osc", function()
             fire("\027]4;4;rgb:0000/0000/ff00\007")
             fire("\027]4;5;rgb:ff00/0000/ff00\007")
             fire("\027]4;6;rgb:0000/ffff/ff00\007")
+            fire_brights()
             vim.wait(200, function()
                 return done
             end)
@@ -276,6 +300,8 @@ describe("osc", function()
             fire("\027]4;1;rgb:ff00/0000/0000;2;rgb:0000/ff00/0000\027\\")
             fire("\027]4;3;rgb:ffff/ff00/0000;4;rgb:0000/0000/ff00\027\\")
             fire("\027]4;5;rgb:ff00/0000/ff00;6;rgb:0000/ffff/ff00\027\\")
+            fire("\027]4;9;rgb:ff00/5500/5500;10;rgb:5500/ff00/5500;11;rgb:ffff/ff00/5500\027\\")
+            fire("\027]4;12;rgb:5500/5500/ff00;13;rgb:ff00/5500/ff00;14;rgb:5500/ffff/ff00\027\\")
             vim.wait(200, function()
                 return done
             end)
@@ -284,6 +310,98 @@ describe("osc", function()
             assert.equal("#ff0000", result.base08)
             assert.equal("#00ff00", result.base0B)
             assert.equal("#00ffff", result.base0C)
+            assert.equal("#ff5555", result.brights.red)
+            assert.equal("#55ffff", result.brights.cyan)
+        end)
+    end)
+
+    describe("bright colors (ANSI 9-14)", function()
+        it("carries the brights alongside the base16 slots, keyed by hue", function()
+            local result = refresh_and_wait()
+
+            assert.is_table(result.brights)
+            assert.equal("#ff5555", result.brights.red)
+            assert.equal("#55ff55", result.brights.green)
+            assert.equal("#ffff55", result.brights.yellow)
+            assert.equal("#5555ff", result.brights.blue)
+            assert.equal("#ff55ff", result.brights.magenta)
+            assert.equal("#55ffff", result.brights.cyan)
+            -- never in the base24 slots (that would change base16 mode)
+            assert.is_nil(result.base12)
+        end)
+
+        it("still succeeds at the timeout when the terminal skips the brights", function()
+            local result, done = "not-yet-called", false
+            osc.refresh_async(function(p)
+                result = p
+                done = true
+            end, { timeout_ms = 80 })
+            fire_full_round({ brights = false })
+            assert.is_true(vim.wait(1000, function()
+                return done
+            end))
+
+            assert.is_table(result)
+            assert.equal("#ff0000", result.base08)
+            assert.is_nil(result.brights)
+        end)
+
+        it("keeps partial brights", function()
+            local result, done = "not-yet-called", false
+            osc.refresh_async(function(p)
+                result = p
+                done = true
+            end, { timeout_ms = 80 })
+            fire_full_round({ brights = { "\027]4;9;rgb:ff00/5500/5500\027\\" } })
+            assert.is_true(vim.wait(1000, function()
+                return done
+            end))
+
+            assert.is_table(result)
+            assert.same({ red = "#ff5555" }, result.brights)
+        end)
+
+        it("persists the brights in the cache", function()
+            refresh_and_wait()
+
+            local cached = osc.load_cached()
+            assert.equal(3, cached.version)
+            assert.equal("#ff5555", cached.brights.red)
+            assert.equal("#55ffff", cached.brights.cyan)
+        end)
+
+        it("repaints when only a bright changed", function()
+            refresh_and_wait()
+
+            local second = refresh_and_wait({
+                brights = {
+                    "\027]4;9;rgb:ff00/8800/5500\027\\",
+                    "\027]4;10;rgb:5500/ff00/5500\027\\",
+                    "\027]4;11;rgb:ffff/ff00/5500\027\\",
+                    "\027]4;12;rgb:5500/5500/ff00\027\\",
+                    "\027]4;13;rgb:ff00/5500/ff00\027\\",
+                    "\027]4;14;rgb:5500/ffff/ff00\027\\",
+                },
+            })
+
+            assert.is_table(second)
+            assert.equal("#ff8855", second.brights.red)
+        end)
+
+        it("loads a v2 cache without brights", function()
+            local path = vim.fn.stdpath("cache") .. "/osc-colors-palette.lua"
+            local lines = { "return {", "  version = 2,", '  variant = "dark",' }
+            for i = 0, 15 do
+                table.insert(lines, string.format('  base%02X = "#%02x%02x%02x",', i, i * 16, i * 16, i * 16))
+            end
+            table.insert(lines, '  capability = { tier = "truecolor" },')
+            table.insert(lines, "}")
+            vim.fn.writefile(lines, path)
+
+            local cached = osc.load_cached()
+            assert.is_table(cached)
+            assert.is_nil(cached.brights)
+            assert.equal("truecolor", cached.capability.tier)
         end)
     end)
 
@@ -374,7 +492,7 @@ describe("osc", function()
             local cached = osc.load_cached()
             assert.is_table(cached)
             assert.equal("truecolor", cached.capability.tier)
-            assert.equal(2, cached.version)
+            assert.equal(3, cached.version)
         end)
 
         it("repaints when only the capability tier changed", function()

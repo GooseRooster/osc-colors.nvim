@@ -152,12 +152,48 @@
 ---@field deprecated osc-colors.HexColor
 ---@field diff { add: osc-colors.HexColor, delete: osc-colors.HexColor, change: osc-colors.HexColor }
 
----Result of roles.generate: resolved role colors, the extracted soul, and
----the cube-snapper (nil outside the 256 tier).
+---Result of roles.generate: resolved role colors and styles, the extracted
+---soul, the group -> family assignment, and the cube-snapper (nil outside
+---the 256 tier).
 ---@class osc-colors.RoleGeneration
 ---@field roles table<string, string> role name -> hex
----@field soul table
+---@field styles table<string, table> role name -> text attributes (italic/bold)
+---@field soul osc-colors.Soul
+---@field assignment table<string, string> role group -> family name
 ---@field snap? fun(hex: string): string
+
+---One of the scheme's own colors, scored by how much the designer
+---invested in it (see `osc-colors.soul`).
+---@class osc-colors.SoulFamily
+---@field name string e.g. "red", or "bright_red" when the bright has its own hue
+---@field aliases string[] names folded into this family (near-identical colors)
+---@field hex osc-colors.HexColor
+---@field L number
+---@field C number
+---@field H number
+---@field shade? { hex: osc-colors.HexColor, L: number, C: number, H: number } bright variant of the same hue
+---@field rel number chroma relative to the sRGB gamut at this L/H (0-1)
+---@field vivid number rel normalized to the scheme's most vivid family
+---@field cohesion number closeness to the scheme's other vivid colors
+---@field shift number how far the hue sits from the stock ANSI position (0-1)
+---@field salience number blended score; higher = more characteristic
+---@field canon number
+---@field order integer
+
+---@class osc-colors.Soul
+---@field variant "dark"|"light"
+---@field bg? osc-colors.HexColor
+---@field fg? osc-colors.HexColor
+---@field bg_L number
+---@field fg_L number
+---@field anchors table[] the queried ANSI 1-6 colors (gray ones included)
+---@field families osc-colors.SoulFamily[] in ANSI order
+---@field ranked osc-colors.SoulFamily[] by salience, descending
+---@field dominant? osc-colors.SoulFamily
+---@field dominant_hue number
+---@field chroma_median number
+---@field chroma_max number
+---@field achromatic boolean no family survived the gray threshold
 
 ---@class osc-colors.Palette
 ---@field variant "dark"|"light"
@@ -170,6 +206,13 @@
 -- cterm slot index. Present only when a cube round ran and the terminal
 -- answered; consumers must handle its absence.
 ---@field cube? table<integer, osc-colors.HexColor>
+-- The terminal's bright ANSI colors (OSC 4 slots 9-14), keyed by hue name
+-- (red, green, yellow, blue, magenta, cyan). Deliberately not stored in the
+-- base24 slots, which would change the base16 mapping. May be partial or
+-- absent.
+---@field brights? table<string, osc-colors.HexColor>
+-- Soul-assigned text attributes per role (absent in base16 mode).
+---@field role_styles? table<string, table>
 -- Internal: set once roles.apply has rewritten the tree; survives
 -- colors.normalize so a second soul pass never double-applies.
 ---@field _soul_applied? boolean

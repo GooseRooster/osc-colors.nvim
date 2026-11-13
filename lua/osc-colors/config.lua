@@ -15,11 +15,11 @@ local M = {}
 ---@class osc-colors.Config
 ---@field capabilities osc-colors.Config.Capabilities Terminal capability options
 ---@field mapping "soul"|"base16" Highlight mapping mode. Default: `"soul"`
--- `"soul"` derives highlight-role colors from the palette's extracted
--- "soul" (dominant hues, chroma envelope, lightness envelope) via OKLCH
--- color math, with semantic exceptions (errors/warnings/diffs) kept
--- anchored to their conventional hue sectors. `"base16"` is the classic
--- static base16 slot mapping.
+-- `"soul"` assigns highlight roles to the terminal scheme's own color
+-- families, chosen by how much the scheme invests in each color (OKLCH
+-- vividness, cohesion, deliberate hue shifts), with italic/bold where color
+-- runs out. Errors/warnings/diffs stay anchored to their conventional hue
+-- sectors. `"base16"` is the classic static base16 slot mapping.
 ---@field soul osc-colors.Config.Soul Soul-mapping tuning knobs (only used when `mapping = "soul"`)
 ---@field ui osc-colors.Config.Ui UI appearance options
 ---@field styles osc-colors.Config.Styles Text style overrides for syntax groups
@@ -37,13 +37,16 @@ local M = {}
 ---@field terminal_colors boolean Set terminal colors (g:terminal_color_0..17). Default: true
 
 ---@class osc-colors.Config.Soul
----@field semantic "sector"|"derived" Semantic exception policy. Default: `"sector"`
--- `"sector"` keeps errors/warnings/diffs anchored to their conventional
--- hue sectors (the soul picks exact hue/chroma/lightness within the
--- sector); `"derived"` fully soul-derives them (experimental).
 ---@field contrast_target number Minimum WCAG contrast for text roles against the background. Default: 4.5
----@field chroma_ceiling_scale number Scales the soul's chroma envelope ceiling (1.0 = as extracted). Default: 1.0
----@field roles table<string, table> Per-role descriptor overrides, keyed by role name (see README for the role list)
+---@field styles "auto"|"always"|false Soul-assigned italic/bold. Default: `"auto"`
+-- `"auto"` spends styles only where color can't tell roles apart (plus
+-- bold headings); `"always"` applies every role's style; `false` disables
+-- soul styles. `styles` (below) always wins for the groups it covers.
+---@field pin table<string, string> Pin a role group to a color family. Default: `{}`
+-- Groups: keyword, function, type, string, constant, special. Families:
+-- red, green, yellow, blue, magenta, cyan (or bright_<name> when the
+-- terminal's bright variant has its own hue), e.g. `{ string = "green" }`.
+---@field roles table<string, table> Per-role tweaks, keyed by role name (see README for the role list)
 
 ---@class osc-colors.Config.Ui
 ---@field transparent boolean Leave Normal background unset. Default: false
@@ -132,9 +135,9 @@ M.defaults = {
     mapping = "soul",
 
     soul = {
-        semantic = "sector",
         contrast_target = 4.5,
-        chroma_ceiling_scale = 1.0,
+        styles = "auto",
+        pin = {},
         roles = {},
     },
 

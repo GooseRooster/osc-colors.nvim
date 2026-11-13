@@ -6,13 +6,13 @@ repository.
 ## What this plugin does
 
 osc-colors.nvim is a Neovim colorscheme that has no scheme registry and no named schemes. It queries the host
-terminal live via OSC 4 (ANSI colors 1-6) and OSC 10/11 (fg/bg), probes terminal color capability via
-XTGETTCAP, synthesizes a full base16 palette from the replies (plus the terminal's real 256-color cube when
-needed), and by default runs a "soul mapping" pass — OKLCH role-based color generation distilled from the
-palette's character — before feeding a highlight-building engine forked from [tinted-nvim]. There is no
-dependency on tinty/tinted-shell/tinted-theming — whatever the terminal is currently rendering with is what
-Neovim gets painted with, including inside devcontainers/SSH sessions where the OSC round-trip tunnels back
-through the PTY.
+terminal live via OSC 4 (ANSI colors 1-6 and brights 9-14) and OSC 10/11 (fg/bg), probes terminal color
+capability via XTGETTCAP, synthesizes a full base16 palette from the replies (plus the terminal's real
+256-color cube when needed), and by default runs a "soul mapping" pass — assigning highlight roles to the
+scheme's own color families by salience — before feeding a highlight-building engine forked from
+[tinted-nvim]. There is no dependency on tinty/tinted-shell/tinted-theming — whatever the terminal is
+currently rendering with is what Neovim gets painted with, including inside devcontainers/SSH sessions where
+the OSC round-trip tunnels back through the PTY.
 
 ## Commands (via `just`, inside the Nix dev shell: `nix develop`)
 
@@ -48,6 +48,10 @@ read-only.
    palette (`base00`-`base0F`) plus a capability tier:
    - `base00`/`base07` = OSC 11/10 (bg/fg)
    - `base08`,`base0A`,`base0B`,`base0C`,`base0D`,`base0E` = OSC 4 replies for ANSI 1-6
+   - `brights` = `{ red=…, green=…, … }` from ANSI 9-14 — optional (a palette-phase timeout with every base
+     slot answered still succeeds, possibly with partial/no brights) and deliberately *not* stored in the
+     base24 slots `base12`-`base17`, whose presence would flip `colors.normalize` into base24 mode and change
+     the `mapping = "base16"` output
    - `base01`-`base06` = grayscale ramp interpolated between bg and fg
    - `base09` (orange) = 60/40 lerp of red/yellow; `base0F` (brown) = red lerped 30% toward bg — these two
      have no ANSI slot of their own and are the values most likely to want taste-adjusting
@@ -58,10 +62,10 @@ read-only.
      256-color cube, which generic RGB→256 converters can't know). Lazy — `opts.cube(tier)` (wired in
      `init.M.refresh` to "soul mapping on a probed 256 tier") decides; skipped when the cache already
      carries a matching palette + cube; a partial cube on timeout still yields a complete palette.
-   - Result (v2: `version`, base slots, `capability`, optional `cube`) is cached to
-     `stdpath("cache")/osc-colors-palette.lua` so the next startup paints instantly, before the async query
-     resolves. If the terminal never answers and there's no cache, osc-colors leaves Neovim's defaults
-     untouched — there's no bundled fallback palette by design.
+   - Result (v3: `version`, base slots, `capability`, optional `brights`, optional `cube`; v1/v2 still load)
+     is cached to `stdpath("cache")/osc-colors-palette.lua` so the next startup paints instantly, before the
+     async query resolves. If the terminal never answers and there's no cache, osc-colors leaves Neovim's
+     defaults untouched — there's no bundled fallback palette by design.
 2. **`capability.lua`** (original) probes and decides the tier. Only replies naming `RGB`/`Tc` count as
    probe answers — Neovim ≥0.11 sends its *own* XTGETTCAP traffic (clipboard/OSC52 caps like `Ms`), whose
    replies land in the same TermResponse stream and must not be miscounted as probed-negatives. Inside
@@ -77,19 +81,33 @@ read-only.
 4. **`soul.lua` + `roles.lua`** (original) are the "soul mapping" pass, applied in `init.M.apply` after
    `colors.normalize` when `cfg.mapping == "soul"` (the default; `"base16"` skips it entirely and must stay
    bit-identical to the old output):
-   - `soul.extract` distills the anchors into a descriptor: chroma-weighted circular hue mean &
-     concentration κ, warm/cool bias, chroma envelope (median/max), lightness envelope (bg/fg OKLCH L),
-     achromatic flag (everything visually gray → hue is meaningless).
-   - `roles.generate` assigns each highlight *role* a color: syntax roles are points (hue offsets from the
-     dominant hue, lightness weights in the bg→fg envelope, chroma scales on the soul's ceiling), repaired
-     by a deterministic spiral pass until pairwise-separated; semantic roles are *ranges* (conventional
-     hue sectors) scanned for the point farthest from everything already placed, preferring the scheme's
-     own anchor hue and carrying the anchor's chroma with a 0.1 legibility floor. Contrast targets vs the
-     background are enforced by lightness bumps. On tier-256, everything snaps (OKLab ΔE) to the real
-     queried cube, or the nominal xterm cube as fallback.
-   - `roles.apply` rewrites the palette tree's role paths, regenerates `semantics` + `ui.status`, leans the
-     gray ramp (base01-06 + their tree slots) a whisper toward the dominant hue, refines the tag-attribute
-     accent from the assigned role hues, and stamps `_soul_applied` so it's idempotent (the flag survives
+   - `soul.extract` builds the scheme's color **families**: one per chromatic ANSI 1-6 anchor (gray anchors,
+     C < 0.03, stay out); each bright is folded in as a `shade` when it's the same hue or a nearby hue at a
+     clearly different lightness, otherwise promoted to its own `bright_<name>` family (solarized's
+     orange/violet); perceptually identical families merge (`aliases`). Each family gets a **salience**:
+     gamut-relative vividness (C / `oklch.max_chroma(L, H)` — raw chroma would always crown red/blue,
+     whose gamut cusps sit far out), cohesion with the other vivid families, and deliberate shift off the
+     stock ANSI hue. `ranked` is by salience; `dominant` is the top family (its hue tints neutrals and the
+     gray ramp). No families → `achromatic`.
+   - `roles.generate` runs an exact branch-and-bound search assigning each of six role **groups** (keyword,
+     function, type, string, constant, special — weighted by prominence) to a family, maximizing
+     prominence × salience plus an adjacency-weighted separation term (sharing a family is penalized, not
+     banned). Lead roles take their family's color as-is; member roles vary it (bright shade, OKLCH L/C
+     steps, hue drift steered away from neighboring groups). Semantic roles go through
+     `soul.sector_color`: the scheme's own color for the conventional hue sector (source in sector → source
+     clamped if just outside → another in-sector family not yet claimed → clamp), with a 0.1 chroma floor;
+     diffs copy success/error/info. Contrast targets are enforced by stepping L toward the foreground.
+     On tier-256, everything snaps (OKLab ΔE) to the real queried cube, or the nominal xterm cube.
+   - Styles (`cfg.soul.styles`, default `"auto"`): italic/bold are spent where color runs out — a group
+     lead sharing a family/near-identical color with a more prominent group, member roles within ΔE of a
+     lead, everything for achromatic souls; headings always bold. `roles.style_highlights` (called by
+     `highlights/init.lua` right after the core builders) merges `palette.role_styles` into the groups that
+     paint each role, with "keep" semantics so `cfg.styles` and builder-set attributes win.
+   - `roles.apply` rewrites the palette tree's role paths (bracketed segments like
+     `name["function"]` are parsed properly — a silently dropped write here once left functions on their
+     base16 slot), regenerates `semantics` + `ui.status`, stores `role_styles`, leans the gray ramp
+     (base01-06 + their tree slots) a whisper toward the dominant hue, refines the tag-attribute accent
+     from the assigned role hues, and stamps `_soul_applied` so it's idempotent (the flag survives
      `colors.normalize`'s deep-extend copying).
 5. **`oklch.lua`** (original) is the perceptual math foundation: srgb↔OKLab/OKLCH (Björn Ottosson's
    reference), gamut clamping via chroma binary search with an epsilon (pure blue sits exactly on the
@@ -97,7 +115,8 @@ read-only.
    one argument (no atan2) — use the local `atan2` helpers.
 6. **`highlights/init.lua`** (`M.build`) is the aggregation point: it re-normalizes the palette (keep
    semantics preserve soul values), then merges output from the core domain builders (`core`, `syntax`,
-   `treesitter`, `lsp`, `diagnostics` — always on), then opt-in integration builders (`telescope`,
+   `treesitter`, `lsp`, `diagnostics` — always on), then soul role styles (`roles.style_highlights`, keep
+   semantics, no-op in base16 mode), then opt-in integration builders (`telescope`,
    `notify`, `cmp`, `blink`, `dapui`, `lualine`, `snacks`, `mini`, keyed by `cfg.highlights.integrations`), then
    `lazy.nvim` plugin-spec `highlights` tables (if `use_lazy_specs`), then user
    `cfg.highlights.overrides(palette)` — in that precedence order, last write wins per highlight group. Only
@@ -118,12 +137,17 @@ read-only.
 
 ### Testing notes for the query/probe/soul pipeline
 
-`tests/osc_spec.lua` feeds canned `TermResponse` events via `nvim_exec_autocmds` (see `fire()`); cube tests
+`tests/osc_spec.lua` feeds canned `TermResponse` events via `nvim_exec_autocmds` (see `fire()`); a full
+round includes the ANSI 9-14 brights (a round without them only completes at the timeout). Cube tests
 fire replies in a single burst with the round armed with a long timeout, relying on the completeness re-check
-at the palette→cube transition. `tests/roles_golden_spec.lua` pins `soul in → role palette out` hex values
-for three representative souls (warm/cool/monochrome): the algorithm is pure math, so any drift is a
-deliberate (or accidental) algorithm/descriptor change — when taste-tuning, regenerate the tables and let
-the diff be the review.
+at the palette→cube transition. `tests/fixtures/schemes.lua` holds a dozen real terminal schemes (with their
+actual brights) plus `to_palette`, mirroring osc.lua's synthesis; `tests/roles_spec.lua` uses it for the
+cross-scheme invariants — notably the *divergence* test (no family may own keyword/function/type/string in
+more than half the schemes), which encodes the point of soul mapping. `tests/roles_golden_spec.lua` pins
+`soul in → role colors + styles + group assignment out` for gruvbox (warm/vivid), nord (cool/muted),
+github_light (light bg) and a monochrome soul: the algorithm is pure math, so any drift is a deliberate (or
+accidental) algorithm/descriptor change — when taste-tuning, regenerate the tables and let the diff be the
+review.
 
 ### Fork lineage — what's original vs. ported
 

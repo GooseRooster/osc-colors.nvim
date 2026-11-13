@@ -152,6 +152,26 @@ function M.in_gamut(L, C, H)
         and b2 <= 1 + GAMUT_EPS
 end
 
+---The most chroma sRGB can carry at this lightness and hue (binary search
+---against the gamut boundary). Dividing a color's chroma by this gives its
+---gamut-relative vividness, which -- unlike raw chroma -- doesn't favor
+---the hues (reds, blues, magentas) whose gamut cusps sit far out.
+---@param L number 0-1
+---@param H number degrees
+---@return number
+function M.max_chroma(L, H)
+    local lo, hi = 0, 0.4
+    for _ = 1, 20 do
+        local mid = (lo + hi) / 2
+        if M.in_gamut(L, mid, H) then
+            lo = mid
+        else
+            hi = mid
+        end
+    end
+    return lo
+end
+
 ---Reduce chroma (binary search) until the color is in the sRGB gamut, and
 ---return the adjusted hex. Chroma is preserved when already in gamut.
 ---@param L number 0-1

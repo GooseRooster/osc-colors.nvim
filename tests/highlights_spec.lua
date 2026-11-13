@@ -373,6 +373,64 @@ describe("highlights", function()
         end)
     end)
 
+    describe("soul role styles", function()
+        local colors, roles
+
+        before_each(function()
+            colors = require("osc-colors.colors")
+            roles = require("osc-colors.roles")
+        end)
+
+        local gray = {
+            variant = "dark",
+            base00 = "#111111",
+            base01 = "#2a2a2a",
+            base02 = "#3d3d3d",
+            base03 = "#555555",
+            base04 = "#777777",
+            base05 = "#999999",
+            base06 = "#bbbbbb",
+            base07 = "#dddddd",
+            base08 = "#666666",
+            base09 = "#777777",
+            base0A = "#888888",
+            base0B = "#999999",
+            base0C = "#aaaaaa",
+            base0D = "#bbbbbb",
+            base0E = "#cccccc",
+            base0F = "#555555",
+        }
+
+        local function soul_palette(cfg)
+            return roles.apply(colors.normalize(vim.deepcopy(gray)), cfg)
+        end
+
+        it("reach the highlight groups that paint each role", function()
+            local result = highlights.build(soul_palette(default_cfg), default_cfg)
+            assert.is_true(result.Function.bold)
+            assert.is_true(result.Type.bold)
+            assert.is_true(result.String.italic)
+            assert.is_true(result["@markup.heading"].bold)
+            assert.is_true(result["@parameter"].italic)
+            -- links inherit instead of being stamped
+            assert.is_nil(result["@function"].bold)
+        end)
+
+        it("never override cfg.styles", function()
+            local cfg = vim.deepcopy(default_cfg)
+            cfg.styles.functions = { bold = false }
+            local result = highlights.build(soul_palette(cfg), cfg)
+            assert.is_false(result.Function.bold)
+        end)
+
+        it("are absent in base16 mode", function()
+            local result = highlights.build(colors.normalize(vim.deepcopy(gray)), default_cfg)
+            assert.is_nil(result.Function.bold)
+            assert.is_nil(result.Type.bold)
+            assert.is_nil(result["@markup.heading"].bold)
+        end)
+    end)
+
     describe("apply", function()
         it("sets highlight groups via nvim_set_hl", function()
             local hl_defs = {
